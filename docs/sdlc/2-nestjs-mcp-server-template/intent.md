@@ -17,7 +17,7 @@ A GitHub template repository that engineers create new MCP servers from. It lean
 - **Transport**: Streamable HTTP for deployed servers; stdio for local development and testing only.
 - **Protocol**: modern MCP (2026-07-28) only.
 - **Auth**: OAuth through MCP-Nest's own auth support. The template shows how to configure the common strategies (an external provider such as Entra ID, Auth0 or Keycloak) and uses MCP-Nest's built-in authorization server for local development and demos only. Servers validate every token themselves (issuer, audience, expiry, scopes), even behind a gateway.
-- **Gateway**: gateway-agnostic. The template documents what it expects from a gateway (identity forwarding, trace propagation) and gives worked setup for recommended gateways, with Azure API Management as the Azure-native default. Rate limiting is the gateway's job, not the server's.
+- **Gateway**: usable behind any MCP gateway. The template documents what it expects from one (identity forwarding, trace propagation) but doesn't recommend or ship setup for a specific gateway. Rate limiting is the gateway's job, not the server's.
 - **State**: stateless by default. The template documents how to keep application state that must survive between requests, with Redis as the worked example.
 - **Production setup**: OpenTelemetry tracing and metrics, structured logging, health and readiness checks, graceful shutdown, config validated at startup.
 - **MCP Inspector built in**: npm scripts for the web UI against stdio and local HTTP, a committed Inspector config pinned to the modern protocol era, and Inspector CLI smoke tests in CI.
@@ -29,19 +29,19 @@ v1 is done when:
 - A fresh repo created from the template passes CI out of the box: lint, tests and Inspector CLI smoke tests.
 
 ## Affected users and systems
-- **Users**: engineers building production MCP servers from the template; the MCP clients (e.g. Claude) and agents that consume those servers through a gateway.
-- **Systems**: GitHub (template repo, CI, releases); OAuth providers (Entra ID by default); MCP gateways (Azure API Management recommended); hosting (Azure Container Apps for the reference deployment, not mandated); the telemetry backend that receives OpenTelemetry data; Redis or another store when a server needs application state.
+- **Users**: engineers building production MCP servers from the template; the MCP clients (e.g. Claude) and agents that consume those servers, directly or through a gateway.
+- **Systems**: GitHub (template repo, CI, releases); OAuth providers (Entra ID by default); an MCP gateway, if one is used; hosting (Azure Container Apps for the reference deployment, not mandated); the telemetry backend that receives OpenTelemetry data; Redis or another store when a server needs application state.
 
 ## Constraints
 - Lean on `@rekog/mcp-nest` v2 (2.0.0 or later) directly. No wrapper and no separate package to maintain. v2 targets the 2026-07-28 revision through MCP TypeScript SDK v2 and supports multi-round tool requests for elicitation, sampling and roots.
 - Don't over-engineer: prefer configuration, examples and docs over new abstractions.
 - No rate limiting in the server. It belongs at the MCP gateway.
 - Modern MCP (2026-07-28) only — no legacy session support and no legacy toggle.
-- Agnostic by design: gateway, OAuth provider, hosting and state store are recommendations, not mandates.
+- Agnostic by design: no specific gateway is required or recommended, and the OAuth provider, hosting and state store are recommendations, not mandates.
 - stdio is for local development and testing only and is never deployed.
 - The Inspector requires Node 22.19 or newer, so the template targets that.
 - No scaffolding CLI. GitHub's "Use this template" is the way to create a server.
 - Python equivalent is out of scope.
 
 ## Open questions
-- Which gateways join Azure API Management on the recommended list. The spec evaluates two or three candidates and records the choice in an ADR.
+None.
