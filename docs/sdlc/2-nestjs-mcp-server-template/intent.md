@@ -13,7 +13,7 @@ There's no strong starting point for building MCP servers on NestJS. Each new se
 ## Proposed outcome
 A GitHub template repository that engineers create new MCP servers from. It leans on `@rekog/mcp-nest` as it is, with no wrapper or extra package, and adds the production setup around it. An engineer adds tools, resources and prompts and picks the options that fit their server:
 
-- **Template repository**: created with GitHub's "Use this template". Everything lives in the repo, so engineers can change any part of it.
+- **Template repository**: engineers create a server with GitHub's "Use this template" and follow a short setup guide. Everything lives in the repo, so engineers can change any part of it.
 - **Transport**: Streamable HTTP for deployed servers; stdio for local development and testing only.
 - **Protocol**: modern MCP (2026-07-28) only.
 - **Auth**: OAuth through MCP-Nest's own auth support. The template shows how to configure the common strategies (an external provider such as Entra ID, Auth0 or Keycloak) and uses MCP-Nest's built-in authorization server for local development and demos only. Servers validate every token themselves (issuer, audience, expiry, scopes), even behind a gateway.
@@ -40,8 +40,8 @@ v1 is done when:
 - Agnostic by design: gateway, OAuth provider, hosting and state store are recommendations, not mandates.
 - stdio is for local development and testing only and is never deployed.
 - The Inspector requires Node 22.19 or newer, so the template targets that.
+- No scaffolding CLI. GitHub's "Use this template" is the way to create a server.
 - Python equivalent is out of scope.
 
 ## Open questions
-- Is a scaffolding CLI still needed for v1, or does GitHub's "Use this template" plus a short setup guide cover it?
 - Which gateways join Azure API Management on the recommended list. The spec evaluates two or three candidates and records the choice in an ADR.
