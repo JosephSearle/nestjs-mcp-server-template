@@ -46,7 +46,7 @@ Library facts are checked against `@rekog/mcp-nest` 2.0.8 and its docs as of 202
 | FR-15 | CI runs lint, type-check, unit tests, Inspector CLI smoke tests, CodeQL and Dependabot. | Intent: v1 done |
 | FR-16 | A Terraform reference deployment on Azure Container Apps. | Intent: deployment |
 | FR-17 | Tagged releases with a changelog. | Intent: releases |
-| FR-18 | A gateway expectations document. No gateway is set up or recommended. | Intent: gateway |
+| FR-18 | A gateway expectations document. A gateway is required for production; none is set up or recommended. | Intent: gateway; concern 1 |
 | FR-19 | Coding-agent guidance ships with the template: `AGENTS.md` for any agent, plus Claude Code settings, path-scoped rules, skills and a project MCP config. | Product owner, 2026-10-14 |
 
 ### Non-functional
@@ -158,6 +158,8 @@ The server reads:
 | `Origin`, `Host` | Checked against `MCP_ALLOWED_ORIGINS` / `MCP_ALLOWED_HOSTS` when set. |
 
 The server emits `WWW-Authenticate` on 401 and 403, and JSON-RPC errors with generic messages.
+
+**A production deployment must sit behind an MCP gateway.** The server is built to scale horizontally behind one: it is stateless, so the gateway can spread load across any number of replicas, and it owns rate limiting, quotas and abuse protection. The server never rate-limits and offers no in-process fallback. Running without a gateway is for local development and demos only. `docs/gateway.md`, `docs/setup.md` and the Terraform README all say so up front.
 
 A gateway must:
 
@@ -277,6 +279,7 @@ infra/terraform/
 - `external_ingress` is a required variable with no default. Whoever deploys decides whether the server is public.
 - Telemetry goes to `OTEL_EXPORTER_OTLP_ENDPOINT`. The reference wires the Container Apps managed OpenTelemetry agent to Application Insights (see open questions).
 - Redis is not provisioned. `docs/state.md` points to Azure Managed Redis.
+- No gateway is provisioned. On its own, the reference deployment is not production-ready; its README says a gateway must front it in production (section 4).
 
 ### 11. Docs and repo hygiene
 
@@ -339,7 +342,7 @@ The guidance is written for engineers building servers from the template, not fo
 | security-api §1 BOLA | Example, checklist and the `mcp-tools.md` agent rule. Concern 8. |
 | security-api §2 authentication | Section 3. Met. Guard ownership: concern 3. |
 | security-api §3 BOPLA | Tool schemas are Zod objects; the example uses `.strict()` and returns only needed fields. Checklist item. |
-| security-api §4 resource consumption | Body limit, timeouts, round limits, replica cap. No rate limit: concern 1. |
+| security-api §4 resource consumption | Rate limiting at the required gateway (concern 1, resolved). Server adds body limit, timeouts, round limits and replica cap. Met in production. |
 | security-api §5 BFLA | `@ToolScopes` / `@ToolRoles`, tools protected by default. Met. |
 | security-api §6 business flows | Engineer-owned. Checklist item. |
 | security-api §7 SSRF | Only outbound call is the configured JWKS. Engineer fetches: checklist item (allowlist, recheck redirects). |
@@ -400,7 +403,8 @@ Carried forward, to verify at the start of Build:
 
 Joseph Searle owns every policy area for this personal project. Each item needs a decision before this spec is accepted.
 
-1. **security-api §4 (resource consumption) vs intent constraint "no rate limiting in the server".** A server without a gateway, including the reference Container Apps deployment, has no rate limit. The design caps body size, request time, multi-round rounds and replica count, which bounds cost but not abuse. Options: (a) accept and state in `docs/gateway.md` and the Terraform README that production needs a gateway; (b) add an opt-in in-process limiter, off by default; (c) make the reference deployment internal-only. Proposed: (a).
+1. **security-api §4 (resource consumption) vs intent constraint "no rate limiting in the server".** A server without a gateway, including the reference Container Apps deployment, has no rate limit. The design caps body size, request time, multi-round rounds and replica count, which bounds cost but not abuse. Options: (a) accept and state in `docs/gateway.md` and the Terraform README that production needs a gateway; (b) add an opt-in in-process limiter, off by default; (c) make the reference deployment internal-only.
+   **Resolved 2026-10-14 (Joseph Searle): (a), as a hard requirement.** Every production deployment sits behind an MCP gateway, the same as a production API. The gateway owns rate limiting, and stateless servers scale horizontally behind it. No in-process limiter, not even opt-in: engineers should never have to build or tune one. Section 4, section 10 and FR-18 updated.
 
 2. **security-baseline §2 / security-mcp §4 (supply chain): beta dependencies.** `@rekog/mcp-nest` 2.0.8 peers on `@modelcontextprotocol/core`, `/node` and `/server` `^2.0.0-beta.5`. A "production-ready" v1 would rest on a beta SDK. `@rekog/mcp-nest-auth` is also marked Beta, though only `dev` mode uses it. Options: (a) ship v1 on exact-pinned betas, label it in the README, and track SDK GA with an Upstream change issue; (b) hold the v1 tag until SDK v2 is GA. Proposed: (a).
 
