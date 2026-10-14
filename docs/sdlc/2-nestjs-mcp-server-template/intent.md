@@ -1,6 +1,6 @@
 ---
 author: Joseph Searle
-status: draft
+status: accepted
 linked_issue: https://github.com/JosephSearle/nestjs-mcp-server-template/issues/2
 created: 2026-10-14
 ---
