@@ -143,9 +143,15 @@ Two modes, set by `AUTH_MODE`:
 
 **stdio** has no HTTP request and no token. It's a local process the developer starts, so it runs without auth. This is why stdio is never deployed.
 
-**Per-tool authorization.** No `allowUnauthenticatedAccess`. Tools without a decorator still need an authenticated caller. `@PublicTool()` is not used anywhere in the template, and `docs/security.md` says when it's acceptable.
+**Per-tool authorization.** No `allowUnauthenticatedAccess`. Every caller must be authenticated, whatever decorators a tool has. `@PublicTool()` is not used anywhere in the template, and `docs/security.md` says when it's acceptable.
 
-**Object-level checks.** The template can't know an engineer's objects. The example tool shows the pattern: read `ctx.getUser().sub` and check ownership before touching an ID from the arguments. `docs/security.md` has the review checklist.
+**Explicit access decision on every tool** (concern 8). A platform test in `test/platform/` discovers every `@Tool` handler and fails CI if it has none of `@ToolScopes`, `@ToolRoles` or `@PublicTool`. The failure names the class and handler and says which decorators satisfy it. A tool open to any authenticated caller states that with `@ToolScopes` naming the server's base scope.
+
+MCP-Nest 2.0.8 applies these decorators to tools only. Resources and prompts get the token check from the guard and nothing finer. So a resource or prompt that returns per-user data must check ownership itself, and `docs/security.md` and `mcp-tools.md` say so. If MCP-Nest adds per-resource or per-prompt authorization, extend the test to cover them.
+
+**Object-level checks.** The template can't know an engineer's objects. The example tool shows the pattern: read `ctx.getUser().sub` and check ownership before touching an ID from the arguments. `docs/security.md` has the review checklist. No `assertOwner()` helper: it couldn't know the data model and would imply coverage it can't give.
+
+**Tool review in PRs.** The default PR template gains a "Tools, resources and prompts" checklist, shown when a PR touches `src/app/`: ownership checked before using any ID from arguments; Zod schemas `.strict()`; only needed fields returned; no shell string concatenation; outbound URLs allowlisted; third-party content marked in results.
 
 **No token passthrough.** The server never forwards its inbound token to another API. `docs/auth/overview.md` shows the two allowed patterns for calling downstream APIs: on-behalf-of / token exchange for a token audienced to that API, or the server's own managed identity.
 
@@ -348,11 +354,11 @@ The guidance is written for engineers building servers from the template, not fo
 | security-baseline §3 exposure | Health endpoints minimal; ingress internal by default, public only as an explicit demo opt-in (concern 6, resolved). Met. |
 | security-baseline §4 data handling | Redaction and pseudonym-only identity (section 7; concern 4, resolved). Met. |
 | security-baseline §5 vulnerabilities | Dependabot, `npm audit`, `SECURITY.md`, upstream-change issue form. Met. |
-| security-api §1 BOLA | Example, checklist and the `mcp-tools.md` agent rule. Concern 8. |
+| security-api §1 BOLA | Example, `docs/security.md` checklist, PR template checklist and the `mcp-tools.md` agent rule. Residual risk owned by each server's engineer (concern 8, resolved). |
 | security-api §2 authentication | Section 3: template-owned `jose` guard with a dedicated negative-case test suite (concern 3, resolved). Met. |
 | security-api §3 BOPLA | Tool schemas are Zod objects; the example uses `.strict()` and returns only needed fields. Checklist item. |
 | security-api §4 resource consumption | Rate limiting at the required gateway (concern 1, resolved). Server adds body limit, timeouts, round limits and replica cap. Met in production. |
-| security-api §5 BFLA | `@ToolScopes` / `@ToolRoles`, tools protected by default. Met. |
+| security-api §5 BFLA | `@ToolScopes` / `@ToolRoles`, tools protected by default, and a CI test that every handler carries an explicit access decorator (concern 8). Met. |
 | security-api §6 business flows | Engineer-owned. Checklist item. |
 | security-api §7 SSRF | Only outbound call is the configured JWKS. Engineer fetches: checklist item (allowlist, recheck redirects). |
 | security-api §8 misconfiguration | Generic errors in production, no CORS, Origin allowlist, no stack traces. Met. |
@@ -434,6 +440,7 @@ Joseph Searle owns every policy area for this personal project. Each item needs 
    **Resolved 2026-10-14 (Joseph Searle): presets plus overrides.** Keep the `AUTH_PROVIDER` presets and add `AUTH_SCOPES_CLAIM` and `AUTH_ROLES_CLAIM` for any other issuer (Okta, a corporate IdP, custom claims). This is config, not a new abstraction, and engineers never edit template-owned auth code to change provider. Sections 3 and 6 updated.
 
 8. **security-api §1 (BOLA) and §3 (BOPLA): engineer-owned.** The template can't enforce object- or property-level checks in tools it hasn't seen. Mitigated by the example tool, the `docs/security.md` checklist and the `mcp-tools.md` rule, which puts the checklist in front of coding agents as they write tools. Accept as residual risk owned by each server's engineer.
+   **Resolved 2026-10-14 (Joseph Searle): add cheap enforcement.** A platform test fails CI when any tool lacks an explicit `@ToolScopes`, `@ToolRoles` or `@PublicTool`, so no tool ships without a deliberate access decision. MCP-Nest 2.0.8 only authorizes tools, so resources and prompts returning per-user data check ownership themselves (documented). The PR template gains a tool-review checklist. Object- and property-level checks stay with each server's engineer as accepted residual risk; no `assertOwner()` helper. Section 3 updated.
 
 9. **security-baseline §2 / security-mcp §3 (agent files are a shipped dependency).** `AGENTS.md`, `.claude/rules/`, skills, hooks and `.mcp.json` are instructions and commands that coding agents act on in every server created from the template. A careless or compromised template release could change them, much like a tool-definition rug pull: engineers merging a release would pick up new agent behaviour, or a hook that runs new commands, without noticing. Proposed: list every agent-file change in its own changelog subsection, have `template-upgrade` show the diff of `.claude/`, `AGENTS.md` and `.mcp.json` and ask before accepting it, and keep hooks to fixed commands. Decide whether that is enough or whether hooks should be left out of the template entirely.
 
