@@ -133,6 +133,7 @@ Two modes, set by `AUTH_MODE`:
 - The guard is template-owned security code (concern 3), so it ships with a dedicated test suite in `test/platform/auth/`: `alg: none`, an HMAC token signed with the public key, wrong issuer, wrong audience, expired, not yet valid, lifetime over the cap, missing required scope, unknown `kid`, malformed token, and the correct `WWW-Authenticate` on each failure. Every rejection reason is also a metric label (section 7).
 - Failures return 401 with `WWW-Authenticate: Bearer resource_metadata="<MCP_PUBLIC_URL>/.well-known/oauth-protected-resource/mcp"`. A missing per-tool scope returns 403 with `error="insufficient_scope"` and the needed `scope`, so clients can step up.
 - Claims are normalised to `{ sub, scopes[], roles[] }` by a claim map chosen with `AUTH_PROVIDER` (`entra`, `auth0`, `keycloak`, `generic`). For example, Entra puts scopes in `scp` and roles in `roles`; Keycloak puts roles in `realm_access.roles`. `resolveUser` returns the normalised user, which MCP-Nest's `@ToolScopes` and `@ToolRoles` read.
+- `AUTH_SCOPES_CLAIM` and `AUTH_ROLES_CLAIM` override where scopes and roles are read from, as a dotted path (for example `realm_access.roles`), for any issuer the presets don't cover (concern 7). `generic` uses them directly, defaulting to `scope` (space-delimited string or array) and `roles`. Overrides win over a preset. No engineer edits `src/platform/auth/` to support a new issuer.
 - `/.well-known/oauth-protected-resource/mcp` returns `resource`, `authorization_servers`, `scopes_supported`, `bearer_methods_supported: ['header']` and `mcp_versions_supported: ['2026-07-28']`.
 - **Choice: one guard plus a config switch, not one module per provider.** The three providers differ only in issuer format, audience and claim names, which is config plus a small map. Provider steps (app registration, audience, token version, scopes) live in `docs/auth/<provider>.md`.
 - **Entra ID is the lead worked example** (concern 5); `AUTH_PROVIDER` still defaults to `generic`, so the code assumes no provider. Entra supports neither Dynamic Client Registration nor Client ID Metadata Documents, so `docs/auth/entra-id.md` covers the three ways an MCP client gets a client ID: pre-authorized well-known clients (for example VS Code), an admin-registered client, and gateway-brokered registration, which is the production path since a gateway is required (section 4).
@@ -198,6 +199,7 @@ A gateway must:
 | `MCP_REQUEST_STATE_SECRET` | random per process in development | Required in production |
 | `AUTH_MODE` | `external` | `external` or `dev` |
 | `AUTH_PROVIDER` | `generic` | `entra`, `auth0`, `keycloak`, `generic` |
+| `AUTH_SCOPES_CLAIM`, `AUTH_ROLES_CLAIM` | preset, or `scope` / `roles` for `generic` | Dotted claim paths; override the preset |
 | `AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_JWKS_URI` | — | `AUTH_ISSUER` required for `external` |
 | `AUTH_ALGORITHMS` | `RS256` | |
 | `AUTH_REQUIRED_SCOPES` | unset | |
@@ -378,7 +380,7 @@ Recorded in `docs/adr/` (MADR format): 0001–0006 are the decisions listed on i
 | ADR | Decision |
 | --- | --- |
 | 0001 | `src/platform` vs `src/app` split with one seam (section 1) |
-| 0002 | One generic token guard plus `AUTH_PROVIDER` claim map, not one module per provider (section 3) |
+| 0002 | One generic token guard plus `AUTH_PROVIDER` claim presets and claim-path overrides, not one module per provider (section 3) |
 | 0003 | Validate every token in the server, even behind a gateway (section 3) |
 | 0004 | Zod env schema via `@nestjs/config`; transport by entry point; auth by `AUTH_MODE` (sections 2, 6) |
 | 0005 | `nestjs-pino`, OTel Node SDK with OTLP, HMAC pseudonyms (section 7) |
@@ -429,6 +431,7 @@ Joseph Searle owns every policy area for this personal project. Each item needs 
    **Resolved 2026-10-14 (Joseph Searle): internal by default.** With a gateway required in production (concern 1), only the gateway should be public, so internal ingress is the deployment's default shape. Terraform adds a VNet-integrated environment so gateways in the VNet can reach the server. `external_ingress = true` is a demo-only opt-in with a warning. IP-restricted external ingress for gateways outside Azure is documented, not built. Section 10 updated.
 
 7. **Intent constraint "no new abstractions" vs FR-6.** The `AUTH_PROVIDER` claim map is a small abstraction. Without it, each provider doc would tell engineers to edit guard code in `src/platform/`, which breaks the upgrade path in section 1. Proposed: keep the map.
+   **Resolved 2026-10-14 (Joseph Searle): presets plus overrides.** Keep the `AUTH_PROVIDER` presets and add `AUTH_SCOPES_CLAIM` and `AUTH_ROLES_CLAIM` for any other issuer (Okta, a corporate IdP, custom claims). This is config, not a new abstraction, and engineers never edit template-owned auth code to change provider. Sections 3 and 6 updated.
 
 8. **security-api §1 (BOLA) and §3 (BOPLA): engineer-owned.** The template can't enforce object- or property-level checks in tools it hasn't seen. Mitigated by the example tool, the `docs/security.md` checklist and the `mcp-tools.md` rule, which puts the checklist in front of coding agents as they write tools. Accept as residual risk owned by each server's engineer.
 
