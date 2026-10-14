@@ -1,0 +1,79 @@
+name: Intent
+description: Propose a new capability or change. Stage 1 of the SDLC. Becomes an intent.md.
+title: "[Intent]: "
+labels: ["intent"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem, not the implementation. Design happens later, in a Spec issue.
+        Once accepted, this issue is captured as `docs/sdlc/<issue-number>-<slug>/intent.md` via PR.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you do today, and why does it matter? Be concrete.
+      placeholder: Every new MCP server re-implements token validation, so behaviour differs per server.
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Proposed outcome
+      description: What better looks like. One possible answer to the problem, not the only one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds, and why they fall short.
+
+  - type: textarea
+    id: affected
+    attributes:
+      label: Affected users and systems
+      description: Who feels this, and which parts of the template it touches.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: areas
+    attributes:
+      label: Areas touched
+      options:
+        - label: Core package (shared hardening)
+        - label: Template repo (scaffold, config, examples)
+        - label: Transport (Streamable HTTP / stdio)
+        - label: Auth (OAuth resource server)
+        - label: Gateway contract
+        - label: Rate limiting
+        - label: Telemetry (OpenTelemetry, logging)
+        - label: Application state store
+        - label: Local dev and testing (MCP Inspector)
+        - label: CI/CD
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Hard limits. Security, compliance, no new dependencies, must stay provider-agnostic.
+
+  - type: textarea
+    id: success
+    attributes:
+      label: Success criteria
+      description: How we'll know it's done. Make each one checkable.
+      placeholder: |
+        - A fresh repo from the template passes CI with this enabled.
+    validations:
+      required: true
+
+  - type: textarea
+    id: open-questions
+    attributes:
+      label: Open questions
+      description: Anything unresolved. List it here instead of guessing.

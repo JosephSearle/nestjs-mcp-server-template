@@ -1,0 +1,73 @@
+name: Upstream change
+description: A new MCP spec revision, dependency release or deprecation that the template must adopt.
+title: "[Upstream]: "
+labels: ["upstream"]
+body:
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source
+      options:
+        - MCP specification revision
+        - MCP-Nest (@rekog/mcp-nest)
+        - MCP TypeScript SDK
+        - MCP Inspector
+        - NestJS
+        - Node.js
+        - OpenTelemetry
+        - Other dependency
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or revision
+      placeholder: "2026-07-28, v1.9.11"
+    validations:
+      required: true
+
+  - type: input
+    id: link
+    attributes:
+      label: Changelog or release link
+    validations:
+      required: true
+
+  - type: textarea
+    id: change
+    attributes:
+      label: What changed
+      description: Summarise the upstream change in your own words.
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact on the template
+      description: What breaks, what we can drop, what we gain. Name affected modules.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: Urgency
+      options:
+        - Security fix, adopt now
+        - Breaking, blocks clients or servers
+        - Deprecation with a deadline
+        - Improvement, adopt when convenient
+    validations:
+      required: true
+
+  - type: dropdown
+    id: route
+    attributes:
+      label: Proposed route
+      description: Large changes go through Intent first. Small, mechanical ones can go straight to a Build task.
+      options:
+        - Version bump only
+        - Needs a Build task
+        - Needs an Intent (design impact)

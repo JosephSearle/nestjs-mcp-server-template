@@ -1,0 +1,26 @@
+name: Docs
+description: Something in the docs is wrong, missing or unclear.
+title: "[Docs]: "
+labels: ["docs"]
+body:
+  - type: input
+    id: location
+    attributes:
+      label: Where
+      description: File path, page or section.
+      placeholder: "README.md > Usage, or docs/gateway-contract.md"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's wrong or missing
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: What it should say
+      description: Optional. Proposed wording or what you needed to know.

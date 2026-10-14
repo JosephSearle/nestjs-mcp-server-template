@@ -1,0 +1,107 @@
+name: Bug report
+description: Something in the template or core package behaves incorrectly.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Found a security vulnerability? Don't file it here. Use the private security advisory link on the previous page.
+        Redact tokens, client secrets and internal hostnames from everything you paste.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The observed behaviour. Facts only. Put your theory in "Possible cause".
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps from a fresh template repo, or a minimal tool that fails.
+      placeholder: |
+        1. Create a repo from the template
+        2. Set MCP_TRANSPORT=http
+        3. Run `npm run inspect:http` and call `tools/list`
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include the exact error, HTTP status and JSON-RPC error code if there is one.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Template / core package version
+      placeholder: "v0.3.1 or commit SHA"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport
+      options:
+        - Streamable HTTP
+        - stdio
+    validations:
+      required: true
+
+  - type: input
+    id: protocol
+    attributes:
+      label: MCP protocol version
+      placeholder: "2026-07-28"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: client
+    attributes:
+      label: Client
+      options:
+        - MCP Inspector (web)
+        - MCP Inspector (CLI)
+        - Claude
+        - Other (say which in Environment)
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Node version, OS, gateway (if any), OAuth provider (if any), state store (if any).
+      placeholder: |
+        Node 22.19.0, Ubuntu 24.04 (WSL2), Azure API Management, Entra ID, no state store
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or trace
+      description: Relevant server logs or the trace ID. Redacted.
+      render: shell
+
+  - type: textarea
+    id: possible-cause
+    attributes:
+      label: Possible cause
+      description: Optional. Your theory about why it happens.

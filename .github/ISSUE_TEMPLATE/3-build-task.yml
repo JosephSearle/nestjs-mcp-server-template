@@ -1,0 +1,61 @@
+name: Build task
+description: A unit of implementation work from an accepted spec. Stage 3 of the SDLC.
+title: "[Build]: "
+labels: ["build"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One task, one PR. If it needs more than one PR, split it and link the parts as sub-issues.
+
+  - type: input
+    id: spec
+    attributes:
+      label: Parent spec
+      description: Link the merged spec.md or its Spec issue.
+      placeholder: "#14"
+    validations:
+      required: true
+
+  - type: textarea
+    id: task
+    attributes:
+      label: Task
+      description: What to build. Reference the spec section it implements.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Core package
+        - Template repo
+        - CI/CD
+        - Docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checkable conditions. Include the tests that prove each one.
+      placeholder: |
+        - [ ] Requests with an expired token return 401 with a WWW-Authenticate header
+        - [ ] Unit test covers expired, wrong-audience and malformed tokens
+    validations:
+      required: true
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: Related work this task deliberately leaves alone.
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Blocked by
+      description: Issues or PRs that must land first.
