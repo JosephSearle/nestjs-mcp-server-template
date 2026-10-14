@@ -221,7 +221,9 @@ The HTTP server in development starts without `AUTH_ISSUER` only if `AUTH_MODE=d
 
 **Personal data in telemetry.**
 
-- Identity appears as `enduser.pseudo.id` = HMAC-SHA256 of `sub` keyed with `LOG_PSEUDONYM_KEY`. Raw `sub`, email, name and tokens are never recorded.
+- Identity appears as `enduser.pseudo.id` = HMAC-SHA256 of `sub` keyed with `LOG_PSEUDONYM_KEY`. Raw `sub`, email, name and tokens are never recorded, and there is no setting to record them (concern 4).
+- Investigating a user means computing their pseudonym with the production key and searching for it. `docs/operations.md` describes doing this in a restricted context with access to Key Vault, never by copying the key to a workstation.
+- `LOG_PSEUDONYM_KEY` must outlive the telemetry retention period, since rotating it breaks correlation across the rotation. Rotate on compromise or on a schedule longer than retention, and record each rotation date.
 - Client IP (`client.address`) is dropped by default.
 - `docs/privacy.md` lists what the template records and why, and gives a record-of-processing entry for the deployer to complete.
 
@@ -338,7 +340,7 @@ The guidance is written for engineers building servers from the template, not fo
 | security-baseline §1 secrets | Key Vault references and env injection; `.env` git-ignored; `.env.example` has no values; agents denied reading `.env*`, state and real `tfvars` (section 12). Met. |
 | security-baseline §2 dependencies | Exact pins, lockfile, Dependabot, CodeQL. Beta upstream: `0.x` until SDK v2 GA (concern 2, resolved). Agent files as a shipped dependency: concern 9. |
 | security-baseline §3 exposure | Health endpoints minimal; ingress a deliberate variable. Concern 6. |
-| security-baseline §4 data handling | Redaction and pseudonyms (section 7). Concern 4. |
+| security-baseline §4 data handling | Redaction and pseudonym-only identity (section 7; concern 4, resolved). Met. |
 | security-baseline §5 vulnerabilities | Dependabot, `npm audit`, `SECURITY.md`, upstream-change issue form. Met. |
 | security-api §1 BOLA | Example, checklist and the `mcp-tools.md` agent rule. Concern 8. |
 | security-api §2 authentication | Section 3: template-owned `jose` guard with a dedicated negative-case test suite (concern 3, resolved). Met. |
@@ -357,10 +359,10 @@ The guidance is written for engineers building servers from the template, not fo
 | security-mcp §5 command injection | No shell-outs in the template. The edit hook runs fixed commands with no interpolated input. Checklist item and `mcp-tools.md` rule: argument arrays only. |
 | security-mcp §6 prompt injection via outputs | Checklist item: delimit third-party content in tool results. |
 | security-mcp §7 authn/authz | Sections 3 and 4. Met. |
-| security-mcp §8 audit | Per-call spans and metrics with pseudonymous identity. Concern 4. |
+| security-mcp §8 audit | Per-call spans and metrics, attributable through the keyed pseudonym (concern 4, resolved). Met. |
 | security-mcp §9 shadow servers | Name and version in discovery and telemetry; `docs/gateway.md` asks for gateway inventory registration. Met. |
 | security-mcp §10 over-sharing | Server-side: private cache scope, per-user Redis keys. Client-side trifecta is out of the server's control. |
-| compliance-gdpr | Template is neither controller nor processor; each deployer is the controller. Privacy by default (section 7), `docs/privacy.md`, retention default. Concern 4. |
+| compliance-gdpr | Template is neither controller nor processor; each deployer is the controller. Privacy by default (section 7), `docs/privacy.md`, retention default. Pseudonymised identity is still personal data, so `docs/privacy.md` names the lawful basis deployers need (concern 4, resolved). |
 | compliance-eu-ai-act | The template is not an AI system. Servers built from it sit in an agent's action layer (§3), so a deployer whose agent is high-risk inherits logging and cybersecurity duties. The per-call telemetry supports those. No obligations on the template itself. |
 | brand-personal | Voice in docs, errors and agent instructions; kebab-case repo and skill names; SCREAMING_SNAKE_CASE env vars; changelog format. npm script colons and the `AGENTS.md`/`CLAUDE.md` file names are ecosystem overrides. No visual identity needed: no UI. |
 | ux-personal §4 | Config errors name the key and the fix; JSON-RPC errors carry a code and message; zero-config stdio start; runnable examples; SemVer for breaking changes. No UI, so §2 and §3 don't apply. |
@@ -414,6 +416,7 @@ Joseph Searle owns every policy area for this personal project. Each item needs 
    **Resolved 2026-10-14 (Joseph Searle): (a).** A template-owned guard on `jose`, attached to the `/mcp` controller, which is the guard pattern MCP-Nest's own docs use. Option (b) would still leave glue code for the lifetime cap, claim mapping and MCP `WWW-Authenticate`, so (a) keeps everything in one place under one test suite. The intent wording stands as a clarification, not a contradiction: MCP-Nest supplies authorization (`@ToolScopes`, `@ToolRoles`, `resolveUser`, per-caller `tools/list`), and the template adds only the token check MCP-Nest leaves to the app. Clarified in the intent under concern 10. Section 3 updated with the guard's test suite.
 
 4. **security-mcp §1 and §8 (attributable audit) vs compliance-gdpr §1 (data minimisation) and security-baseline §4.** Audit needs to tie each call to a person; GDPR and the baseline want no personal data in telemetry without reason. Proposed default: HMAC pseudonym of `sub`, no raw identifiers, no client IP, 30-day retention. A keyed pseudonym is still personal data under UK/EU GDPR, so deployers need a lawful basis (likely legitimate interests: security monitoring) and a record of processing; `docs/privacy.md` says so. Decide whether the default is pseudonym, raw `sub` behind a flag, or nothing.
+   **Resolved 2026-10-14 (Joseph Searle): pseudonym only.** No setting to record raw `sub`, so no engineer has to decide whether to weaken privacy. Raw identity is ruled out because it fails minimisation; no identity is ruled out because it fails attribution. Hash lookups happen in a restricted context with the key in Key Vault, and the key outlives the retention period. Section 7 updated.
 
 5. **Intent (Entra ID as default provider) vs MCP client registration.** Entra ID does not offer Dynamic Client Registration, and its support for Client ID Metadata Documents is unconfirmed. MCP clients may then need a pre-registered client ID, or a gateway that brokers registration. The template's token validation is unaffected; the zero-configuration client experience is. Decide whether Entra stays the documented default or Auth0/Keycloak lead the docs with Entra marked "pre-registered clients only".
 
