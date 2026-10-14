@@ -257,7 +257,7 @@ The HTTP server in development starts without `AUTH_ISSUER` only if `AUTH_MODE=d
 - `release.yml` on `v*` tags: runs CI, then creates a GitHub Release from that version's `CHANGELOG.md` section (`contents: write`).
 - `deploy.yml`: `workflow_dispatch` only. Azure login with OIDC federated credentials, image build and push, `terraform apply`. Skips with a message when its repo variables are unset, so it never fails a fresh repo.
 
-**Releases.** SemVer for the template. A breaking change to env vars, endpoint paths, the `app.module.ts` seam or npm script names is a major release. `CHANGELOG.md` follows Keep a Changelog, newest first, grouped Added/Changed/Fixed/Removed. `docs/setup.md` tells engineers to start their own changelog and keep a note of the template version they came from.
+**Releases.** SemVer for the template. Until MCP TypeScript SDK v2 is GA and `@rekog/mcp-nest` has released against it, releases are `0.x` pre-releases and the README says the template is built on a beta SDK. `1.0.0` is tagged only after both, and only once the v1 done criteria in the intent are met (concern 2). From `1.0.0`, a breaking change to env vars, endpoint paths, the `app.module.ts` seam or npm script names is a major release. `CHANGELOG.md` follows Keep a Changelog, newest first, grouped Added/Changed/Fixed/Removed. `docs/setup.md` tells engineers to start their own changelog and keep a note of the template version they came from.
 
 **Container.** Multi-stage `Dockerfile`, `node:22-alpine` pinned by digest, `npm ci --omit=dev`, non-root user, `CMD` runs the HTTP entry only.
 
@@ -335,7 +335,7 @@ The guidance is written for engineers building servers from the template, not fo
 | Policy | Outcome |
 | --- | --- |
 | security-baseline §1 secrets | Key Vault references and env injection; `.env` git-ignored; `.env.example` has no values; agents denied reading `.env*`, state and real `tfvars` (section 12). Met. |
-| security-baseline §2 dependencies | Exact pins, lockfile, Dependabot, CodeQL. Beta upstream: concern 2. Agent files as a shipped dependency: concern 9. |
+| security-baseline §2 dependencies | Exact pins, lockfile, Dependabot, CodeQL. Beta upstream: `0.x` until SDK v2 GA (concern 2, resolved). Agent files as a shipped dependency: concern 9. |
 | security-baseline §3 exposure | Health endpoints minimal; ingress a deliberate variable. Concern 6. |
 | security-baseline §4 data handling | Redaction and pseudonyms (section 7). Concern 4. |
 | security-baseline §5 vulnerabilities | Dependabot, `npm audit`, `SECURITY.md`, upstream-change issue form. Met. |
@@ -352,7 +352,7 @@ The guidance is written for engineers building servers from the template, not fo
 | security-mcp §1 tokens | Per-user tokens, no shared credentials, no passthrough. Met. |
 | security-mcp §2 scope creep | Lifetime cap; scope review is IdP config. Checklist item. |
 | security-mcp §3 tool poisoning | Static tool definitions reviewed in PRs; no dynamic registration. Met for the server side. |
-| security-mcp §4 supply chain | As baseline §2. Concern 2. `.mcp.json` names only the local build. |
+| security-mcp §4 supply chain | As baseline §2. `.mcp.json` names only the local build. |
 | security-mcp §5 command injection | No shell-outs in the template. The edit hook runs fixed commands with no interpolated input. Checklist item and `mcp-tools.md` rule: argument arrays only. |
 | security-mcp §6 prompt injection via outputs | Checklist item: delimit third-party content in tool results. |
 | security-mcp §7 authn/authz | Sections 3 and 4. Met. |
@@ -406,7 +406,8 @@ Joseph Searle owns every policy area for this personal project. Each item needs 
 1. **security-api §4 (resource consumption) vs intent constraint "no rate limiting in the server".** A server without a gateway, including the reference Container Apps deployment, has no rate limit. The design caps body size, request time, multi-round rounds and replica count, which bounds cost but not abuse. Options: (a) accept and state in `docs/gateway.md` and the Terraform README that production needs a gateway; (b) add an opt-in in-process limiter, off by default; (c) make the reference deployment internal-only.
    **Resolved 2026-10-14 (Joseph Searle): (a), as a hard requirement.** Every production deployment sits behind an MCP gateway, the same as a production API. The gateway owns rate limiting, and stateless servers scale horizontally behind it. No in-process limiter, not even opt-in: engineers should never have to build or tune one. Section 4, section 10 and FR-18 updated.
 
-2. **security-baseline §2 / security-mcp §4 (supply chain): beta dependencies.** `@rekog/mcp-nest` 2.0.8 peers on `@modelcontextprotocol/core`, `/node` and `/server` `^2.0.0-beta.5`. A "production-ready" v1 would rest on a beta SDK. `@rekog/mcp-nest-auth` is also marked Beta, though only `dev` mode uses it. Options: (a) ship v1 on exact-pinned betas, label it in the README, and track SDK GA with an Upstream change issue; (b) hold the v1 tag until SDK v2 is GA. Proposed: (a).
+2. **security-baseline §2 / security-mcp §4 (supply chain): beta dependencies.** `@rekog/mcp-nest` 2.0.8 peers on `@modelcontextprotocol/core`, `/node` and `/server` `^2.0.0-beta.5`. A "production-ready" v1 would rest on a beta SDK. `@rekog/mcp-nest-auth` is also marked Beta, though only `dev` mode uses it. Options: (a) ship v1 on exact-pinned betas, label it in the README, and track SDK GA with an Upstream change issue; (b) hold the v1 tag until SDK v2 is GA.
+   **Resolved 2026-10-14 (Joseph Searle): (b).** Build on exact-pinned betas and release `0.x` pre-releases, labelled as built on a beta SDK. Tag `1.0.0` only once MCP TypeScript SDK v2 is GA and `@rekog/mcp-nest` has released against it. No stability claim the upstream can't back. Section 9 updated.
 
 3. **Intent constraint "OAuth through MCP-Nest's own support" vs security-api §2 / security-mcp §7.** MCP-Nest's own auth (`McpAuthModule`) is an authorization server. For external issuers it ships no resource-server guard; its examples hand-roll one. Meeting "validate every token" therefore needs a template-owned guard of about 100 lines on `jose`, which is security-critical code the template now maintains. Options: (a) template-owned `jose` guard (proposed, section 3); (b) a third-party middleware such as `express-oauth2-jwt-bearer`, mapped via `resolveUser`. Both depart from "MCP-Nest's own support" for production; the intent wording needs confirming.
 
