@@ -382,7 +382,7 @@ Recorded in `docs/adr/` (MADR format): 0001–0006 are the decisions listed on i
 | 0003 | Validate every token in the server, even behind a gateway (section 3) |
 | 0004 | Zod env schema via `@nestjs/config`; transport by entry point; auth by `AUTH_MODE` (sections 2, 6) |
 | 0005 | `nestjs-pino`, OTel Node SDK with OTLP, HMAC pseudonyms (section 7) |
-| 0006 | One reusable module plus a reference environment; ingress as a required decision (section 10) |
+| 0006 | One reusable module plus a reference environment; internal ingress in a VNet-integrated environment by default (section 10) |
 | 0007 | `AGENTS.md` as the source with `CLAUDE.md` importing it; `template-` prefixed skills and path-scoped rules; `.mcp.json` limited to the local build (section 12) |
 
 ## Open questions resolved
