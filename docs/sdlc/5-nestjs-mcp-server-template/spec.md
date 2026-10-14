@@ -279,9 +279,11 @@ infra/terraform/
 ```
 
 - `azurerm` provider pinned with the lock file. State in an Azure Storage backend configured at `init`; no state in the repo.
-- Resources: Log Analytics workspace (retention variable, default 30 days), Container Apps environment, user-assigned managed identity, Azure Container Registry (AcrPull for the identity), Key Vault with RBAC holding `MCP_REQUEST_STATE_SECRET` and `LOG_PSEUDONYM_KEY`, referenced as Container App secrets, and the Container App.
+- Resources: Log Analytics workspace (retention variable, default 30 days), a virtual network with an infrastructure subnet for the environment, a VNet-integrated Container Apps environment, user-assigned managed identity, Azure Container Registry (AcrPull for the identity), Key Vault with RBAC holding `MCP_REQUEST_STATE_SECRET` and `LOG_PSEUDONYM_KEY`, referenced as Container App secrets, and the Container App.
 - Container App: HTTPS only, liveness and readiness probes on `/healthz` and `/readyz`, `min_replicas` 1, `max_replicas` a variable (default 3) as a cost ceiling, HTTP scale rule.
-- `external_ingress` is a required variable with no default. Whoever deploys decides whether the server is public.
+- Ingress is internal by default (concern 6): only apps in the same Container Apps environment or resources in its virtual network can reach the server. The gateway runs either as another container app in the environment or inside the VNet (for example Azure API Management with VNet integration).
+- `external_ingress` (default `false`) makes the server public for demos only. When `true`, Terraform outputs a warning that this is not a production setup, and the README repeats it.
+- Gateways hosted outside Azure: the README documents restricting external ingress to the gateway's egress IPs with Container Apps IP restrictions. Not built into the module.
 - Telemetry goes to `OTEL_EXPORTER_OTLP_ENDPOINT`. The reference wires the Container Apps managed OpenTelemetry agent to Application Insights (see open questions).
 - Redis is not provisioned. `docs/state.md` points to Azure Managed Redis.
 - No gateway is provisioned. On its own, the reference deployment is not production-ready; its README says a gateway must front it in production (section 4).
@@ -341,7 +343,7 @@ The guidance is written for engineers building servers from the template, not fo
 | --- | --- |
 | security-baseline §1 secrets | Key Vault references and env injection; `.env` git-ignored; `.env.example` has no values; agents denied reading `.env*`, state and real `tfvars` (section 12). Met. |
 | security-baseline §2 dependencies | Exact pins, lockfile, Dependabot, CodeQL. Beta upstream: `0.x` until SDK v2 GA (concern 2, resolved). Agent files as a shipped dependency: concern 9. |
-| security-baseline §3 exposure | Health endpoints minimal; ingress a deliberate variable. Concern 6. |
+| security-baseline §3 exposure | Health endpoints minimal; ingress internal by default, public only as an explicit demo opt-in (concern 6, resolved). Met. |
 | security-baseline §4 data handling | Redaction and pseudonym-only identity (section 7; concern 4, resolved). Met. |
 | security-baseline §5 vulnerabilities | Dependabot, `npm audit`, `SECURITY.md`, upstream-change issue form. Met. |
 | security-api §1 BOLA | Example, checklist and the `mcp-tools.md` agent rule. Concern 8. |
@@ -424,6 +426,7 @@ Joseph Searle owns every policy area for this personal project. Each item needs 
    **Resolved 2026-10-14 (Joseph Searle): Entra stays the lead worked example, plus a provider matrix.** Checked: Entra supports neither DCR nor CIMD, with no announced plans. Because a gateway is required in production (concern 1), gateway-brokered registration (as agentgateway does for Entra) is always available there, so the gap is gateway configuration, not a template problem. `docs/auth/entra-id.md` covers pre-authorized clients, admin-registered clients and gateway brokering; `docs/auth/overview.md` carries the matrix. `AUTH_PROVIDER` defaults to `generic`. Section 3 updated.
 
 6. **security-baseline §3 (exposure is a deliberate decision).** The reference deployment needs a reachable endpoint to be useful, but no gateway ships with it. `external_ingress` is a required variable with no default, so the decision is explicit per deployment. Confirm this is enough, or default to internal ingress.
+   **Resolved 2026-10-14 (Joseph Searle): internal by default.** With a gateway required in production (concern 1), only the gateway should be public, so internal ingress is the deployment's default shape. Terraform adds a VNet-integrated environment so gateways in the VNet can reach the server. `external_ingress = true` is a demo-only opt-in with a warning. IP-restricted external ingress for gateways outside Azure is documented, not built. Section 10 updated.
 
 7. **Intent constraint "no new abstractions" vs FR-6.** The `AUTH_PROVIDER` claim map is a small abstraction. Without it, each provider doc would tell engineers to edit guard code in `src/platform/`, which breaks the upgrade path in section 1. Proposed: keep the map.
 
