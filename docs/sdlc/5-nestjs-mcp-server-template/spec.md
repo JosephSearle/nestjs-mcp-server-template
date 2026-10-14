@@ -135,6 +135,8 @@ Two modes, set by `AUTH_MODE`:
 - Claims are normalised to `{ sub, scopes[], roles[] }` by a claim map chosen with `AUTH_PROVIDER` (`entra`, `auth0`, `keycloak`, `generic`). For example, Entra puts scopes in `scp` and roles in `roles`; Keycloak puts roles in `realm_access.roles`. `resolveUser` returns the normalised user, which MCP-Nest's `@ToolScopes` and `@ToolRoles` read.
 - `/.well-known/oauth-protected-resource/mcp` returns `resource`, `authorization_servers`, `scopes_supported`, `bearer_methods_supported: ['header']` and `mcp_versions_supported: ['2026-07-28']`.
 - **Choice: one guard plus a config switch, not one module per provider.** The three providers differ only in issuer format, audience and claim names, which is config plus a small map. Provider steps (app registration, audience, token version, scopes) live in `docs/auth/<provider>.md`.
+- **Entra ID is the lead worked example** (concern 5); `AUTH_PROVIDER` still defaults to `generic`, so the code assumes no provider. Entra supports neither Dynamic Client Registration nor Client ID Metadata Documents, so `docs/auth/entra-id.md` covers the three ways an MCP client gets a client ID: pre-authorized well-known clients (for example VS Code), an admin-registered client, and gateway-brokered registration, which is the production path since a gateway is required (section 4).
+- `docs/auth/overview.md` has a provider matrix: Dynamic Client Registration, Client ID Metadata Documents and pre-registered clients, for Entra ID, Auth0 and Keycloak, so the registration gap is visible before anyone picks a provider.
 
 **`dev`.** Wires `@rekog/mcp-nest-auth` (`McpAuthModule`) so the server runs its own authorization server, delegating login to GitHub or Google. Startup fails when `NODE_ENV=production` or `MCP_PUBLIC_URL` isn't a `localhost` URL. Documented in `docs/auth/local-dev.md`. `mcpVersionsSupported` is narrowed to `['2026-07-28']`.
 
@@ -398,7 +400,7 @@ Carried forward, to verify at the start of Build:
 
 1. **Inspector protocol pinning.** Confirm `inspector.config.json` can pin `2026-07-28`. If it can't, the server's `modern-only` posture is the enforcement and the intent's "config pinned to the modern protocol" is met only indirectly.
 2. **Inspector CLI headers.** Confirm the CLI can send `Authorization` for HTTP smoke tests. Fallback: a small `@modelcontextprotocol/client` script pinned to `2026-07-28`.
-3. **Entra ID client registration.** Confirm Entra's support for Client ID Metadata Documents. See concern 5.
+3. ~~**Entra ID client registration.**~~ Checked 2026-10-14: Entra supports neither DCR nor CIMD, with no announced plans. Resolved under concern 5. Recheck Auth0 and Keycloak support when writing the provider matrix.
 4. **Agent file formats.** Confirm the `paths` frontmatter for `.claude/rules/`, the `@AGENTS.md` import and the hook schema against current Claude Code docs, and that Copilot reads `AGENTS.md`.
 5. **Container Apps managed OpenTelemetry agent.** Confirm it's generally available and accepts OTLP traces and metrics for Application Insights. Fallback: an OpenTelemetry Collector sidecar.
 
@@ -419,6 +421,7 @@ Joseph Searle owns every policy area for this personal project. Each item needs 
    **Resolved 2026-10-14 (Joseph Searle): pseudonym only.** No setting to record raw `sub`, so no engineer has to decide whether to weaken privacy. Raw identity is ruled out because it fails minimisation; no identity is ruled out because it fails attribution. Hash lookups happen in a restricted context with the key in Key Vault, and the key outlives the retention period. Section 7 updated.
 
 5. **Intent (Entra ID as default provider) vs MCP client registration.** Entra ID does not offer Dynamic Client Registration, and its support for Client ID Metadata Documents is unconfirmed. MCP clients may then need a pre-registered client ID, or a gateway that brokers registration. The template's token validation is unaffected; the zero-configuration client experience is. Decide whether Entra stays the documented default or Auth0/Keycloak lead the docs with Entra marked "pre-registered clients only".
+   **Resolved 2026-10-14 (Joseph Searle): Entra stays the lead worked example, plus a provider matrix.** Checked: Entra supports neither DCR nor CIMD, with no announced plans. Because a gateway is required in production (concern 1), gateway-brokered registration (as agentgateway does for Entra) is always available there, so the gap is gateway configuration, not a template problem. `docs/auth/entra-id.md` covers pre-authorized clients, admin-registered clients and gateway brokering; `docs/auth/overview.md` carries the matrix. `AUTH_PROVIDER` defaults to `generic`. Section 3 updated.
 
 6. **security-baseline §3 (exposure is a deliberate decision).** The reference deployment needs a reachable endpoint to be useful, but no gateway ships with it. `external_ingress` is a required variable with no default, so the decision is explicit per deployment. Confirm this is enough, or default to internal ingress.
 
