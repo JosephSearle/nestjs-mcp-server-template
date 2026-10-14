@@ -94,7 +94,7 @@ docs/
   settings.json
   rules/  skills/
 AGENTS.md  CLAUDE.md  .mcp.json
-inspector.config.json
+inspector.config.json  biome.json
 .env.example  Dockerfile  .dockerignore  .nvmrc
 CHANGELOG.md  SECURITY.md  README.md
 ```
@@ -252,7 +252,7 @@ The HTTP server in development starts without `AUTH_ISSUER` only if `AUTH_MODE=d
 | --- | --- |
 | `dev`, `dev:stdio` | Run HTTP or stdio entry with watch |
 | `build`, `start` | Compile; run `dist/main.js` with instrumentation |
-| `lint`, `format`, `typecheck` | ESLint (flat config, typescript-eslint), Prettier, `tsc --noEmit` |
+| `lint`, `format`, `typecheck` | Biome (`biome check` lints and checks formatting; `biome format --write` formats), `tsc --noEmit` |
 | `test` | Jest unit tests |
 | `inspect` | Inspector web UI against the stdio server from `inspector.config.json` |
 | `inspect:http` | Inspector web UI against `http://localhost:3000/mcp` |
@@ -264,10 +264,13 @@ The HTTP server in development starts without `AUTH_ISSUER` only if `AUTH_MODE=d
 
 **Workflows** (`.github/workflows/`, `permissions: contents: read` unless stated, actions pinned to SHAs):
 
-- `ci.yml` on pull requests and `main`: install, lint, typecheck, test, build, smoke tests, `npm audit --omit=dev --audit-level=high`, Docker build (no push), `terraform fmt -check` and `terraform init -backend=false && terraform validate`. Node 22.19.x and 24.x.
+- `ci.yml` on pull requests and `main`: install, `biome ci` (lint and formatting, no writes), typecheck, test, build, smoke tests, `npm audit --omit=dev --audit-level=high`, Docker build (no push), `terraform fmt -check` and `terraform init -backend=false && terraform validate`. Node 22.19.x and 24.x.
 - `codeql.yml`: `javascript-typescript` and `actions`, on pull requests, `main` and weekly.
 - `.github/dependabot.yml`: `npm`, `github-actions`, `docker`, `terraform`, weekly, minor and patch grouped.
 - `release.yml` on `v*` tags: runs CI, then creates a GitHub Release from that version's `CHANGELOG.md` section (`contents: write`).
+- `agent-files.yml` (template repo only; removed by `docs/setup.md` in new servers): on pull requests, fails when `.claude/`, `AGENTS.md`, `CLAUDE.md` or `.mcp.json` change without an entry under the `### Agent files` subsection of the `Unreleased` changelog section (concern 9).
+
+**Tooling.** Biome is the single linter and formatter, configured in `biome.json`, exact-pinned like other dev dependencies. No ESLint or Prettier.
 - `deploy.yml`: `workflow_dispatch` only. Azure login with OIDC federated credentials, image build and push, `terraform apply`. Skips with a message when its repo variables are unset, so it never fails a fresh repo.
 
 **Releases.** SemVer for the template. Until MCP TypeScript SDK v2 is GA and `@rekog/mcp-nest` has released against it, releases are `0.x` pre-releases and the README says the template is built on a beta SDK. `1.0.0` is tagged only after both, and only once the v1 done criteria in the intent are met (concern 2). From `1.0.0`, a breaking change to env vars, endpoint paths, the `app.module.ts` seam or npm script names is a major release. `CHANGELOG.md` follows Keep a Changelog, newest first, grouped Added/Changed/Fixed/Removed. `docs/setup.md` tells engineers to start their own changelog and keep a note of the template version they came from.
@@ -317,7 +320,7 @@ The guidance is written for engineers building servers from the template, not fo
 - `permissions.allow`: the npm scripts in section 9 and read-only `git` commands.
 - `permissions.ask`: edits to `src/platform/**`, `.github/**` and `infra/**`.
 - `permissions.deny`: reading `.env` and `.env.*` (except `.env.example`), `infra/**/*.tfstate*` and `infra/**/*.tfvars` (except `*.tfvars.example`).
-- One `PostToolUse` hook after edits to `src/**`: runs `npm run lint -- --quiet` and `npm run typecheck` on fixed arguments, with no file paths or tool input interpolated into the command.
+- One `PostToolUse` hook after edits to `src/**`: runs `npm run lint` (Biome) and `npm run typecheck` on fixed arguments, with no file paths or tool input interpolated into the command.
 - `.claude/settings.local.json` is git-ignored for personal overrides.
 
 **`.claude/rules/`**, path-scoped with `paths` frontmatter:
@@ -413,6 +416,7 @@ Carried forward, to verify at the start of Build:
 3. ~~**Entra ID client registration.**~~ Checked 2026-10-14: Entra supports neither DCR nor CIMD, with no announced plans. Resolved under concern 5. Recheck Auth0 and Keycloak support when writing the provider matrix.
 4. **Agent file formats.** Confirm the `paths` frontmatter for `.claude/rules/`, the `@AGENTS.md` import and the hook schema against current Claude Code docs, and that Copilot reads `AGENTS.md`.
 5. **Container Apps managed OpenTelemetry agent.** Confirm it's generally available and accepts OTLP traces and metrics for Application Insights. Fallback: an OpenTelemetry Collector sidecar.
+6. **Biome rule coverage.** Confirm Biome's type-aware rules cover floating and misused promises in async handlers, which typescript-eslint would have caught. If not, record the gap and rely on tests and `tsc` strict mode.
 
 ## Areas of concern
 
@@ -443,5 +447,6 @@ Joseph Searle owns every policy area for this personal project. Each item needs 
    **Resolved 2026-10-14 (Joseph Searle): add cheap enforcement.** A platform test fails CI when any tool lacks an explicit `@ToolScopes`, `@ToolRoles` or `@PublicTool`, so no tool ships without a deliberate access decision. MCP-Nest 2.0.8 only authorizes tools, so resources and prompts returning per-user data check ownership themselves (documented). The PR template gains a tool-review checklist. Object- and property-level checks stay with each server's engineer as accepted residual risk; no `assertOwner()` helper. Section 3 updated.
 
 9. **security-baseline §2 / security-mcp §3 (agent files are a shipped dependency).** `AGENTS.md`, `.claude/rules/`, skills, hooks and `.mcp.json` are instructions and commands that coding agents act on in every server created from the template. A careless or compromised template release could change them, much like a tool-definition rug pull: engineers merging a release would pick up new agent behaviour, or a hook that runs new commands, without noticing. Proposed: list every agent-file change in its own changelog subsection, have `template-upgrade` show the diff of `.claude/`, `AGENTS.md` and `.mcp.json` and ask before accepting it, and keep hooks to fixed commands. Decide whether that is enough or whether hooks should be left out of the template entirely.
+   **Resolved 2026-10-14 (Joseph Searle): visible and gated, plus a CI check.** Each release lists agent-file changes in an `### Agent files` changelog subsection; `template-upgrade` shows the diff of `.claude/`, `AGENTS.md`, `CLAUDE.md` and `.mcp.json` separately and asks before accepting it; the hook stays fixed commands with nothing interpolated. The template repo's `agent-files.yml` workflow fails a PR that changes agent files without that changelog entry, so the disclosure can't be skipped. Hooks stay. Section 9 updated.
 
 10. **Scope beyond the accepted intent.** The intent doesn't mention coding-agent tooling; FR-19 and section 12 were added by the product owner during design. It doesn't contradict any constraint, but it is new scope. Options: (a) accept it at spec level and note it on epic #5; (b) amend `intent.md` in this PR so intent and spec agree. Proposed: (b), a one-line addition to Proposed outcome.
