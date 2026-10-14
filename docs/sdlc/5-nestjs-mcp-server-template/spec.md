@@ -1,7 +1,8 @@
 ---
 status: draft
-linked_intent: docs/sdlc/2-nestjs-mcp-server-template/intent.md
+linked_intent: docs/sdlc/5-nestjs-mcp-server-template/intent.md
 linked_issue: https://github.com/JosephSearle/nestjs-mcp-server-template/issues/4
+linked_epic: https://github.com/JosephSearle/nestjs-mcp-server-template/issues/5
 persona: personal
 skills_applied:
   - security-baseline
@@ -19,7 +20,7 @@ created: 2026-10-14
 
 # Spec: v1 NestJS MCP server template
 
-Requirements and design for the v1 template accepted in [intent #2](../2-nestjs-mcp-server-template/intent.md).
+Requirements and design for the v1 template accepted in [intent #2](intent.md) (epic #5).
 Library facts are checked against `@rekog/mcp-nest` 2.0.8 and its docs as of 2026-10-14.
 
 ## Requirements
