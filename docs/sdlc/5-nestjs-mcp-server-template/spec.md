@@ -47,6 +47,7 @@ Library facts are checked against `@rekog/mcp-nest` 2.0.8 and its docs as of 202
 | FR-16 | A Terraform reference deployment on Azure Container Apps. | Intent: deployment |
 | FR-17 | Tagged releases with a changelog. | Intent: releases |
 | FR-18 | A gateway expectations document. No gateway is set up or recommended. | Intent: gateway |
+| FR-19 | Coding-agent guidance ships with the template: `AGENTS.md` for any agent, plus Claude Code settings, path-scoped rules, skills and a project MCP config. | Product owner, 2026-10-14 |
 
 ### Non-functional
 
@@ -88,14 +89,18 @@ infra/terraform/               # See section 10
 docs/
   setup.md  upgrading.md  gateway.md  state.md  operations.md
   security.md  privacy.md  auth/{overview,entra-id,auth0,keycloak,local-dev}.md
-  adr/0001-…0006-….md
+  adr/0001-…0007-….md
+.claude/                       # See section 12
+  settings.json
+  rules/  skills/
+AGENTS.md  CLAUDE.md  .mcp.json
 inspector.config.json
 .env.example  Dockerfile  .dockerignore  .nvmrc
 CHANGELOG.md  SECURITY.md  README.md
 ```
 
 - `src/app/app.module.ts` is the only file `platform/` imports from `app/`. `platform/` never imports engineer code otherwise.
-- `docs/upgrading.md` explains pulling a template release: add the template as a remote, merge the release tag, resolve conflicts. Conflicts should only appear in `platform/`, `docs/`, CI and `infra/`.
+- `docs/upgrading.md` explains pulling a template release: add the template as a remote, merge the release tag, resolve conflicts. Conflicts should only appear in `platform/`, `docs/`, CI, `infra/` and the template-owned agent files in section 12.
 - Rejected: a separate `platform` workspace package. It's a package in all but name, which the intent ruled out.
 
 ### 2. MCP wiring
@@ -280,16 +285,58 @@ infra/terraform/
 - `docs/security.md`: the OWASP API and MCP Top 10 self-review, one row per item with how the template addresses it, what the engineer owns, and the evidence. Filling it in for the template is the v1 security review.
 - Docs follow brand-personal §1: short sentences, imperative mood, no marketing language.
 
-### 12. Policy assessment summary
+### 12. Coding-agent tooling (ADR-0007)
+
+The guidance is written for engineers building servers from the template, not for maintaining the template. Every file below ships to every server created from it.
+
+**Instructions.**
+
+- `AGENTS.md` is the single source of agent guidance, readable by Claude Code, Copilot and other agents. It covers: the `platform`/`app` split and the one seam; the npm scripts and what "done" means (`lint`, `typecheck`, `test`, `test:smoke` pass); the tool-authoring rules below in summary; and where the docs live. It ends with an `## Engineer notes` section that template releases never edit.
+- `CLAUDE.md` imports it with `@AGENTS.md` and adds only Claude Code specifics: that path rules live in `.claude/rules/` and which skills exist. No guidance is duplicated between the two files.
+
+**`.claude/settings.json`** (kept small, since template and engineers both edit it):
+
+- `permissions.allow`: the npm scripts in section 9 and read-only `git` commands.
+- `permissions.ask`: edits to `src/platform/**`, `.github/**` and `infra/**`.
+- `permissions.deny`: reading `.env` and `.env.*` (except `.env.example`), `infra/**/*.tfstate*` and `infra/**/*.tfvars` (except `*.tfvars.example`).
+- One `PostToolUse` hook after edits to `src/**`: runs `npm run lint -- --quiet` and `npm run typecheck` on fixed arguments, with no file paths or tool input interpolated into the command.
+- `.claude/settings.local.json` is git-ignored for personal overrides.
+
+**`.claude/rules/`**, path-scoped with `paths` frontmatter:
+
+| File | Paths | Says |
+| --- | --- | --- |
+| `platform.md` | `src/platform/**`, `test/platform/**` | Template-owned. Prefer config or `src/app/`; changes here are upstream changes and conflict on upgrade. |
+| `mcp-tools.md` | `src/app/**` | Every tool gets `@ToolScopes` or `@ToolRoles` unless deliberately public; check ownership before using an ID from arguments; Zod schemas use `.strict()`; return only needed fields; no shell string concatenation; allowlist outbound URLs and recheck redirects; mark third-party content in results; never log tool arguments containing personal data; add a test per tool. |
+| `config.md` | `src/platform/config/**`, `.env.example` | New variables are SCREAMING_SNAKE_CASE, validated in the Zod schema, documented in the section 6 table in `docs/operations.md`, and never given real values in `.env.example`. |
+| `terraform.md` | `infra/**` | Secrets via Key Vault references only; no public ingress without the explicit variable; pin providers; run `terraform fmt` and `validate`. |
+
+**`.claude/skills/`**, prefixed `template-` so engineers' own skills never collide on upgrade:
+
+| Skill | Does |
+| --- | --- |
+| `template-add-tool` | Scaffold a tool in `src/app/tools/`, register it in `app.module.ts`, add a test and a smoke-test call, and apply `mcp-tools.md`. |
+| `template-add-resource` | Same for a resource or resource template. |
+| `template-add-prompt` | Same for a prompt. |
+| `template-upgrade` | Merge a template release tag, read its changelog entry, resolve conflicts with `src/app/` and engineer notes winning, run the full check. |
+
+**`.mcp.json`** (repo root; Claude Code does not read `.claude/mcp.json`):
+
+- One server, `local`: the server's own stdio build, `node dist/main.stdio.js`, so the agent can call the tools it is building.
+- No remote servers, no credentials, no `env` with secrets. Claude Code asks before first use of a project server.
+
+**Not shipped:** the template maintainer's own SDLC and policy skills. They live at user level; servers created from the template don't depend on them.
+
+### 13. Policy assessment summary
 
 | Policy | Outcome |
 | --- | --- |
-| security-baseline §1 secrets | Key Vault references and env injection; `.env` git-ignored; `.env.example` has no values. Met. |
-| security-baseline §2 dependencies | Exact pins, lockfile, Dependabot, CodeQL. Beta upstream: concern 2. |
+| security-baseline §1 secrets | Key Vault references and env injection; `.env` git-ignored; `.env.example` has no values; agents denied reading `.env*`, state and real `tfvars` (section 12). Met. |
+| security-baseline §2 dependencies | Exact pins, lockfile, Dependabot, CodeQL. Beta upstream: concern 2. Agent files as a shipped dependency: concern 9. |
 | security-baseline §3 exposure | Health endpoints minimal; ingress a deliberate variable. Concern 6. |
 | security-baseline §4 data handling | Redaction and pseudonyms (section 7). Concern 4. |
 | security-baseline §5 vulnerabilities | Dependabot, `npm audit`, `SECURITY.md`, upstream-change issue form. Met. |
-| security-api §1 BOLA | Example and checklist only. Concern 8. |
+| security-api §1 BOLA | Example, checklist and the `mcp-tools.md` agent rule. Concern 8. |
 | security-api §2 authentication | Section 3. Met. Guard ownership: concern 3. |
 | security-api §3 BOPLA | Tool schemas are Zod objects; the example uses `.strict()` and returns only needed fields. Checklist item. |
 | security-api §4 resource consumption | Body limit, timeouts, round limits, replica cap. No rate limit: concern 1. |
@@ -302,8 +349,8 @@ infra/terraform/
 | security-mcp §1 tokens | Per-user tokens, no shared credentials, no passthrough. Met. |
 | security-mcp §2 scope creep | Lifetime cap; scope review is IdP config. Checklist item. |
 | security-mcp §3 tool poisoning | Static tool definitions reviewed in PRs; no dynamic registration. Met for the server side. |
-| security-mcp §4 supply chain | As baseline §2. Concern 2. |
-| security-mcp §5 command injection | No shell-outs in the template. Checklist item: argument arrays only. |
+| security-mcp §4 supply chain | As baseline §2. Concern 2. `.mcp.json` names only the local build. |
+| security-mcp §5 command injection | No shell-outs in the template. The edit hook runs fixed commands with no interpolated input. Checklist item and `mcp-tools.md` rule: argument arrays only. |
 | security-mcp §6 prompt injection via outputs | Checklist item: delimit third-party content in tool results. |
 | security-mcp §7 authn/authz | Sections 3 and 4. Met. |
 | security-mcp §8 audit | Per-call spans and metrics with pseudonymous identity. Concern 4. |
@@ -311,12 +358,12 @@ infra/terraform/
 | security-mcp §10 over-sharing | Server-side: private cache scope, per-user Redis keys. Client-side trifecta is out of the server's control. |
 | compliance-gdpr | Template is neither controller nor processor; each deployer is the controller. Privacy by default (section 7), `docs/privacy.md`, retention default. Concern 4. |
 | compliance-eu-ai-act | The template is not an AI system. Servers built from it sit in an agent's action layer (§3), so a deployer whose agent is high-risk inherits logging and cybersecurity duties. The per-call telemetry supports those. No obligations on the template itself. |
-| brand-personal | Voice in docs and errors, kebab-case repo, SCREAMING_SNAKE_CASE env vars, changelog format. npm script colons are an ecosystem override. No visual identity needed: no UI. |
+| brand-personal | Voice in docs, errors and agent instructions; kebab-case repo and skill names; SCREAMING_SNAKE_CASE env vars; changelog format. npm script colons and the `AGENTS.md`/`CLAUDE.md` file names are ecosystem overrides. No visual identity needed: no UI. |
 | ux-personal §4 | Config errors name the key and the fix; JSON-RPC errors carry a code and message; zero-config stdio start; runnable examples; SemVer for breaking changes. No UI, so §2 and §3 don't apply. |
 
-### 13. ADRs to write during Build
+### 14. ADRs to write during Build
 
-Recorded in `docs/adr/` (MADR format), one per decision on issue #4. The decision in each is the one this spec proposes.
+Recorded in `docs/adr/` (MADR format): 0001–0006 are the decisions listed on issue #4, 0007 was added during design. The decision in each is the one this spec proposes.
 
 | ADR | Decision |
 | --- | --- |
@@ -326,6 +373,7 @@ Recorded in `docs/adr/` (MADR format), one per decision on issue #4. The decisio
 | 0004 | Zod env schema via `@nestjs/config`; transport by entry point; auth by `AUTH_MODE` (sections 2, 6) |
 | 0005 | `nestjs-pino`, OTel Node SDK with OTLP, HMAC pseudonyms (section 7) |
 | 0006 | One reusable module plus a reference environment; ingress as a required decision (section 10) |
+| 0007 | `AGENTS.md` as the source with `CLAUDE.md` importing it; `template-` prefixed skills and path-scoped rules; `.mcp.json` limited to the local build (section 12) |
 
 ## Open questions resolved
 
@@ -345,7 +393,8 @@ Carried forward, to verify at the start of Build:
 1. **Inspector protocol pinning.** Confirm `inspector.config.json` can pin `2026-07-28`. If it can't, the server's `modern-only` posture is the enforcement and the intent's "config pinned to the modern protocol" is met only indirectly.
 2. **Inspector CLI headers.** Confirm the CLI can send `Authorization` for HTTP smoke tests. Fallback: a small `@modelcontextprotocol/client` script pinned to `2026-07-28`.
 3. **Entra ID client registration.** Confirm Entra's support for Client ID Metadata Documents. See concern 5.
-4. **Container Apps managed OpenTelemetry agent.** Confirm it's generally available and accepts OTLP traces and metrics for Application Insights. Fallback: an OpenTelemetry Collector sidecar.
+4. **Agent file formats.** Confirm the `paths` frontmatter for `.claude/rules/`, the `@AGENTS.md` import and the hook schema against current Claude Code docs, and that Copilot reads `AGENTS.md`.
+5. **Container Apps managed OpenTelemetry agent.** Confirm it's generally available and accepts OTLP traces and metrics for Application Insights. Fallback: an OpenTelemetry Collector sidecar.
 
 ## Areas of concern
 
@@ -365,4 +414,8 @@ Joseph Searle owns every policy area for this personal project. Each item needs 
 
 7. **Intent constraint "no new abstractions" vs FR-6.** The `AUTH_PROVIDER` claim map is a small abstraction. Without it, each provider doc would tell engineers to edit guard code in `src/platform/`, which breaks the upgrade path in section 1. Proposed: keep the map.
 
-8. **security-api §1 (BOLA) and §3 (BOPLA): engineer-owned.** The template can't enforce object- or property-level checks in tools it hasn't seen. Mitigated by the example tool and the `docs/security.md` checklist. Accept as residual risk owned by each server's engineer.
+8. **security-api §1 (BOLA) and §3 (BOPLA): engineer-owned.** The template can't enforce object- or property-level checks in tools it hasn't seen. Mitigated by the example tool, the `docs/security.md` checklist and the `mcp-tools.md` rule, which puts the checklist in front of coding agents as they write tools. Accept as residual risk owned by each server's engineer.
+
+9. **security-baseline §2 / security-mcp §3 (agent files are a shipped dependency).** `AGENTS.md`, `.claude/rules/`, skills, hooks and `.mcp.json` are instructions and commands that coding agents act on in every server created from the template. A careless or compromised template release could change them, much like a tool-definition rug pull: engineers merging a release would pick up new agent behaviour, or a hook that runs new commands, without noticing. Proposed: list every agent-file change in its own changelog subsection, have `template-upgrade` show the diff of `.claude/`, `AGENTS.md` and `.mcp.json` and ask before accepting it, and keep hooks to fixed commands. Decide whether that is enough or whether hooks should be left out of the template entirely.
+
+10. **Scope beyond the accepted intent.** The intent doesn't mention coding-agent tooling; FR-19 and section 12 were added by the product owner during design. It doesn't contradict any constraint, but it is new scope. Options: (a) accept it at spec level and note it on epic #5; (b) amend `intent.md` in this PR so intent and spec agree. Proposed: (b), a one-line addition to Proposed outcome.
