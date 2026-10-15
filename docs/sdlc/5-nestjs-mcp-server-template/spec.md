@@ -53,7 +53,7 @@ Library facts are checked against `@rekog/mcp-nest` 2.0.8 and its docs as of 202
 
 | ID | Requirement |
 | --- | --- |
-| NFR-1 | Node 22.19 or newer (`engines`, `.nvmrc`, CI, Dockerfile). |
+| NFR-1 | Node 22.22.3 or newer on 22.x, or 24.15.0 or newer (`engines`, `.nvmrc`, CI, Dockerfile). Raised from 22.19 during Build (check 7). |
 | NFR-2 | A fresh repo from the template passes CI with no secrets, no Azure access and no edits. |
 | NFR-3 | Deployed dependencies pinned to exact versions, with a committed lockfile. Third-party actions pinned to a commit SHA. |
 | NFR-4 | No secrets, tokens or raw personal data in logs, traces or metrics. |
@@ -264,14 +264,14 @@ The HTTP server in development starts without `AUTH_ISSUER` only if `AUTH_MODE=d
 | `inspect:http` | Inspector web UI against `http://localhost:3000/mcp` |
 | `test:smoke` | Inspector CLI against stdio and HTTP |
 
-- `@modelcontextprotocol/inspector` v2 (2.11.0 or later; its `engines` is `node >=22.19.0`, which sets NFR-1) is an exact-pinned dev dependency, so CI never resolves a newer Inspector.
+- `@modelcontextprotocol/inspector` v2 (2.11.0 or later; its `engines` is `node >=22.19.0`, below the NFR-1 floor that `@nestjs/cli` sets, check 7) is an exact-pinned dev dependency, so CI never resolves a newer Inspector.
 - `inspector.config.json` uses the Inspector's `mcpServers` format and defines `local-stdio` (`node dist/main.stdio.js`) and `local-http` (`"type": "http"`, `http://localhost:3000/mcp`), both with `"protocolEra": "modern"`. The Inspector's default era is `legacy`, so leaving the field out would make it open with `initialize` and the server would reject it. `2026-07-28` is the only modern revision, so `modern` pins it.
 - Every script reads the committed file with `--config`, which is read-only and errors if the file is missing, rather than `--catalog`, which the Inspector writes to.
 - **Smoke tests** use the Inspector CLI with `--format json`, `jq -e` assertions and `--connect-timeout` set on every call. stdio: `initialize` probe, `tools/list`, call the example tool, read the example resource, get the example prompt. HTTP: the same calls with `--header 'Authorization: Bearer <token>'`, plus a call with no token and one with a wrong-audience token, each asserting exit code `3` (the CLI's "authentication required" code, raised on 401/403). The HTTP run starts a test JWKS stub (generated key pair, served on localhost) and mints short-lived tokens from it, so the real guard runs with no external issuer and no secrets. CI sets `MCP_STORAGE_DIR` and `MCP_INSPECTOR_OAUTH_STATE_PATH` to a scratch directory and never starts interactive OAuth.
 
 **Workflows** (`.github/workflows/`, `permissions: contents: read` unless stated, actions pinned to SHAs):
 
-- `ci.yml` on pull requests and `main`: install, `biome ci` (lint and formatting, no writes), typecheck, test, build, smoke tests, `npm audit --omit=dev --audit-level=high`, Docker build (no push), `terraform fmt -check` and `terraform init -backend=false && terraform validate`. Node 22.19.x and 24.x.
+- `ci.yml` on pull requests and `main`: install, `biome ci` (lint and formatting, no writes), typecheck, test, build, smoke tests, `npm audit --omit=dev --audit-level=high`, Docker build (no push), `terraform fmt -check` and `terraform init -backend=false && terraform validate`. Node 22.22.3 (the floor) and 24.x.
 - `codeql.yml`: `javascript-typescript` and `actions`, on pull requests, `main` and weekly.
 - `.github/dependabot.yml`: `npm`, `github-actions`, `docker`, `terraform`, weekly, minor and patch grouped.
 - `release.yml` on `v*` tags: runs CI, then creates a GitHub Release from that version's `CHANGELOG.md` section (`contents: write`).
@@ -437,6 +437,7 @@ Build-time checks (all resolved 2026-10-15):
 4. ~~**Agent file formats.**~~ Checked 2026-10-15: rules use `paths:` YAML frontmatter with globs; `@AGENTS.md` imports are supported and are the only form that works in every session; Copilot's coding agent reads `AGENTS.md`. One fix: the hook must exit `2` for Claude to see a failure, so it runs a small Node script rather than `npm` directly. Section 12 updated.
 5. ~~**Container Apps managed OpenTelemetry agent.**~~ Checked 2026-10-15: GA, but its Application Insights destination accepts traces and logs only, not metrics; gRPC only; single fixed replica; Terraform support documented only through AzAPI. **Decided (Joseph Searle): run an OpenTelemetry Collector as its own container app** exporting all signals to Application Insights, and have the server honour `OTEL_EXPORTER_OTLP_PROTOCOL` rather than hard-coding HTTP. Sections 7 and 10 updated.
 6. ~~**Biome rule coverage.**~~ Checked 2026-10-15: `noFloatingPromises` exists since Biome 2.0 but is a nursery rule using Biome's own type inference, with default severity "information". **Decided (Joseph Searle): Biome only, rule enabled at `error`**, exact pin, `tsc` strict and tests as backstop, revisit triggers recorded. Section 9 updated.
+7. ~~**Node floor.**~~ Found 2026-10-15 by the first CI run (#12): `@nestjs/cli` 12.0.8, a dev dependency, pulls in `@angular-devkit/*` 22.2.x, which requires Node `^22.22.3 || ^24.15.0 || >=26`. With `engine-strict=true`, `npm ci` fails on 22.19. Production dependencies still accept 22.19, but the template must install for development. **Decided (Joseph Searle): raise the floor** to `^22.22.3 || >=24.15.0`, with `.nvmrc` at 22.22.3 and the CI matrix testing 22.22.3 exactly. NFR-1 and section 9 updated.
 
 All build-time checks are resolved.
 

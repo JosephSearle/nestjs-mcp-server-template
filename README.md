@@ -45,7 +45,7 @@ Built with:
 
 ### Dependencies
 
-- Node.js 22.19 or newer. `.nvmrc` pins 22.19.0, so `nvm use` selects it. `npm install` fails on older versions.
+- Node.js 22.22.3 or newer on 22.x, or 24.15.0 or newer. `.nvmrc` pins 22.22.3, so `nvm use` selects it. `npm install` fails on older versions.
 - npm, which ships with Node.js.
 
 ## Usage
