@@ -12,7 +12,7 @@ Merging this PR accepts the document. Closing it unmerged rejects it.
 
 <!-- Path to the file this PR adds or changes. -->
 
-`docs/sdlc/`
+`docs/sdlc/<epic>-<slug>/`
 
 ## Linked issue
 
