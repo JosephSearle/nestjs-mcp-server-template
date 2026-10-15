@@ -31,6 +31,8 @@ Chosen option: **2, Biome alone**.
 - `@biomejs/biome` is exact-pinned like every other dependency. `biome.json` holds the config.
 - `linter.rules.nursery.noFloatingPromises` is `error`. Its default is `info`, so it must be set explicitly.
 - No ESLint or Prettier anywhere in the repo.
+- `javascript.parser.unsafeParameterDecoratorsEnabled` is `true`, so Biome parses Nest parameter decorators such as `@Payload()`.
+- `linter.rules.style.useImportType` is `off`. Its fix turns a class used only as a constructor parameter type into `import type`, which removes the value Nest's dependency injection reads from decorator metadata. Added in #13.
 
 ### Consequences
 
