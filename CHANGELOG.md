@@ -15,6 +15,10 @@ Changes to coding-agent files (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`
 - Node 22.19 or newer, set in `engines` and `.nvmrc`.
 - ADR-0001 (platform/app split) and ADR-0008 (Biome).
 - Apache-2.0 licence.
+- Config validated at startup by a Zod schema through `@nestjs/config`. Invalid config exits 1 and lists every problem as `<KEY>: <what's wrong>. <what to do>`, without values. Read it through `ConfigService<AppConfig, true>`.
+- `.env.example` listing every variable, with no real values.
+- Biome `noProcessEnv` at `error` in `src/`, except `src/platform/config/`.
+- ADR-0004 (config schema, transport by entry point, auth by `AUTH_MODE`).
 
 ### Fixed
 

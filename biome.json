@@ -21,6 +21,28 @@
 			}
 		}
 	},
+	"overrides": [
+		{
+			"includes": ["src/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noProcessEnv": "error"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["src/platform/config/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noProcessEnv": "off"
+					}
+				}
+			}
+		}
+	],
 	"javascript": {
 		"formatter": {
 			"quoteStyle": "double"
