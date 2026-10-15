@@ -19,6 +19,7 @@ Changes to coding-agent files (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`
 ### Fixed
 
 - README is UTF-8 with a single heading.
+- `.gitattributes` keeps line endings LF on every checkout, so `npm run lint` passes on Windows.
 
 ### Agent files
 
