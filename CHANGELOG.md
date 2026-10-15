@@ -15,11 +15,17 @@ Changes to coding-agent files (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`
 - Node 22.19 or newer, set in `engines` and `.nvmrc`.
 - ADR-0001 (platform/app split) and ADR-0008 (Biome).
 - Apache-2.0 licence.
+- Config validated at startup by a Zod schema through `@nestjs/config`. Invalid config exits 1 and lists every problem as `<KEY>: <what's wrong>. <what to do>`, without values. Read it through `ConfigService<AppConfig, true>`.
+- `.env.example` listing every variable, with no real values.
+- Biome `noProcessEnv` at `error` in `src/`, except `src/platform/config/`.
+- Biome test rules at `error` in `test/`: no focused or skipped tests, no `done` callbacks, no deeply nested `describe` blocks.
+- ADR-0004 (config schema, transport by entry point, auth by `AUTH_MODE`).
 
 ### Fixed
 
 - README is UTF-8 with a single heading.
+- `.gitattributes` keeps line endings LF on every checkout, so `npm run lint` passes on Windows.
 
 ### Agent files
 
-- None.
+- Added `.claude/settings.json` with a `PostToolUse` hook that runs `.claude/hooks/biome-check.mjs` after Claude Code writes or edits a file. It runs `biome check` on that file only, with fixed arguments and no shell, and reports failures back to Claude.
