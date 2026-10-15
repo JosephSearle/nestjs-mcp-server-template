@@ -18,6 +18,7 @@ Changes to coding-agent files (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`
 - Config validated at startup by a Zod schema through `@nestjs/config`. Invalid config exits 1 and lists every problem as `<KEY>: <what's wrong>. <what to do>`, without values. Read it through `ConfigService<AppConfig, true>`.
 - `.env.example` listing every variable, with no real values.
 - Biome `noProcessEnv` at `error` in `src/`, except `src/platform/config/`.
+- Biome test rules at `error` in `test/`: no focused or skipped tests, no `done` callbacks, no deeply nested `describe` blocks.
 - ADR-0004 (config schema, transport by entry point, auth by `AUTH_MODE`).
 
 ### Fixed

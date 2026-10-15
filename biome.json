@@ -41,6 +41,23 @@
 					}
 				}
 			}
+		},
+		{
+			"includes": ["test/**"],
+			"linter": {
+				"rules": {
+					"suspicious": {
+						"noFocusedTests": "error",
+						"noSkippedTests": "error"
+					},
+					"style": {
+						"noDoneCallback": "error"
+					},
+					"complexity": {
+						"noExcessiveNestedTestSuites": "error"
+					}
+				}
+			}
 		}
 	],
 	"javascript": {
