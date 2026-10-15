@@ -7,6 +7,7 @@ import {
 	LEGACY_INITIALIZE,
 	UNSUPPORTED_PROTOCOL_VERSION,
 } from "../../support/mcp-client";
+import { authStub } from "./fixtures/http-env";
 
 let app: NestExpressApplication;
 let url: string;
@@ -23,14 +24,14 @@ afterAll(async () => {
 
 describe("Streamable HTTP on /mcp", () => {
 	it("serves revision 2026-07-28", async () => {
-		const client = await connectHttp(url);
+		const client = await connectHttp(url, await authStub.sign());
 		expect(client.getProtocolEra()).toBe("modern");
 		expect(client.getNegotiatedProtocolVersion()).toBe("2026-07-28");
 		await client.close();
 	});
 
 	it("serves the example tool, resource and prompt", async () => {
-		const client = await connectHttp(url);
+		const client = await connectHttp(url, await authStub.sign());
 
 		const { tools } = await client.listTools();
 		expect(tools.map((tool) => tool.name)).toContain("echo");
@@ -56,6 +57,7 @@ describe("Streamable HTTP on /mcp", () => {
 			headers: {
 				"content-type": "application/json",
 				accept: "application/json, text/event-stream",
+				authorization: `Bearer ${await authStub.sign()}`,
 			},
 			body: JSON.stringify(LEGACY_INITIALIZE),
 		});

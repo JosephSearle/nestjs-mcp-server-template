@@ -11,9 +11,14 @@ export function modernClient(): Client {
 	);
 }
 
-export async function connectHttp(url: string): Promise<Client> {
+/** Connects over Streamable HTTP, sending `token` as the bearer token on every request. */
+export async function connectHttp(url: string, token: string): Promise<Client> {
 	const client = modernClient();
-	await client.connect(new StreamableHTTPClientTransport(new URL(url)));
+	await client.connect(
+		new StreamableHTTPClientTransport(new URL(url), {
+			requestInit: { headers: { authorization: `Bearer ${token}` } },
+		}),
+	);
 	return client;
 }
 

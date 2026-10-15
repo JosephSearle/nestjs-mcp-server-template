@@ -2,6 +2,7 @@ import "./fixtures/http-limits-env";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { createHttpApp } from "../../../src/platform/mcp/start-mcp";
 import { connectHttp } from "../../support/mcp-client";
+import { authStub } from "./fixtures/http-limits-env";
 import { SlowModule } from "./fixtures/slow.module";
 
 let app: NestExpressApplication;
@@ -33,7 +34,7 @@ describe("HTTP limits", () => {
 	});
 
 	it("answers a request slower than MCP_REQUEST_TIMEOUT_MS with 503", async () => {
-		const client = await connectHttp(url);
+		const client = await connectHttp(url, await authStub.sign());
 		await expect(
 			client.callTool({ name: "slow", arguments: {} }),
 		).rejects.toThrow("Request timed out.");

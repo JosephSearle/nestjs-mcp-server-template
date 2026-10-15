@@ -16,11 +16,14 @@ const CONFIG = {
 	MCP_INPUT_ROUND_TIMEOUT_MS: 4000,
 };
 
+const PUBLIC_URL = "https://mcp.example.com";
+
 describe("httpTransportOptions", () => {
 	it("serves modern-only, statelessly, from the controller's route", () => {
 		const options = httpTransportOptions({
 			MCP_ALLOWED_ORIGINS: undefined,
 			MCP_ALLOWED_HOSTS: undefined,
+			MCP_PUBLIC_URL: PUBLIC_URL,
 		});
 
 		expect(options.protocol).toBe("modern-only");
@@ -30,10 +33,23 @@ describe("httpTransportOptions", () => {
 		expect(options.security).toEqual({});
 	});
 
+	it("answers a per-tool scope shortfall with a step-up challenge (spec §3)", () => {
+		const options = httpTransportOptions({
+			MCP_ALLOWED_ORIGINS: undefined,
+			MCP_ALLOWED_HOSTS: undefined,
+			MCP_PUBLIC_URL: PUBLIC_URL,
+		});
+
+		expect(options.stepUpAuthorization).toEqual({
+			resourceMetadataUrl: `${PUBLIC_URL}/.well-known/oauth-protected-resource/mcp`,
+		});
+	});
+
 	it("takes the Origin and Host allowlists from config", () => {
 		const options = httpTransportOptions({
 			MCP_ALLOWED_ORIGINS: ["app.example.com"],
 			MCP_ALLOWED_HOSTS: ["mcp.example.com"],
+			MCP_PUBLIC_URL: PUBLIC_URL,
 		});
 
 		expect(options.security).toEqual({
