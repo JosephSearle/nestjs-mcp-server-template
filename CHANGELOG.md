@@ -24,6 +24,17 @@ Changes to coding-agent files (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`
 - CodeQL scanning for `javascript-typescript` and `actions` on pull requests, `main` and weekly.
 - Dependabot for `npm`, `github-actions`, `docker` and `terraform`, weekly, with minor and patch updates grouped.
 - Every third-party action pinned to a commit SHA.
+- MCP over Streamable HTTP on `/mcp` (`src/main.ts`) and over stdio (`src/main.stdio.ts`), both serving revision `2026-07-28` only. 2025-era requests get the unsupported-protocol-version error.
+- `/mcp` is a Nest controller, so a guard can cover every request. Stateless, with private cache hints, `requestState` signed with `MCP_REQUEST_STATE_SECRET`, and round limits from config.
+- HTTP body limit from `MCP_MAX_REQUEST_BYTES` (413) and request deadline from `MCP_REQUEST_TIMEOUT_MS` (503), both answered as JSON-RPC errors.
+- The stdio entry logs to stderr only, opens no port, needs no `.env`, and refuses to start when `NODE_ENV=production`.
+- `dev:stdio` script.
+- Example tool (`echo`), resource (`example://about`) and prompt (`summarise`) in `src/app/`, registered in `app.module.ts`.
+- Platform tests that fail on `statefulMode`, `serverMutator` or dynamic registration in `src/`.
+
+### Changed
+
+- Biome parses parameter decorators, and `useImportType` is off: its fix breaks Nest dependency injection (ADR-0008).
 
 ### Fixed
 
