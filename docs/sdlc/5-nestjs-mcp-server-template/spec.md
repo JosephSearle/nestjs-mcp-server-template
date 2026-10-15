@@ -89,7 +89,7 @@ infra/terraform/               # See section 10
 docs/
   setup.md  upgrading.md  gateway.md  state.md  operations.md
   security.md  privacy.md  auth/{overview,entra-id,auth0,keycloak,local-dev}.md
-  adr/0001-…0007-….md
+  adr/0001-…0008-….md
 .claude/                       # See section 12
   settings.json
   rules/  skills/  hooks/
@@ -272,6 +272,10 @@ The HTTP server in development starts without `AUTH_ISSUER` only if `AUTH_MODE=d
 - `agent-files.yml` (template repo only; removed by `docs/setup.md` in new servers): on pull requests, fails when `.claude/`, `AGENTS.md`, `CLAUDE.md` or `.mcp.json` change without an entry under the `### Agent files` subsection of the `Unreleased` changelog section (concern 9).
 
 **Tooling.** Biome is the single linter and formatter, configured in `biome.json`, exact-pinned like other dev dependencies. No ESLint or Prettier.
+
+- `noFloatingPromises` (nursery, `types` domain) is enabled at `error`, so un-awaited promises in tools, the guard and shutdown fail CI. Nursery rules can change between releases, which the exact pin contains; Dependabot bumps to Biome are reviewed for rule changes.
+- Biome's type inference is its own, not the TypeScript compiler's, so it may miss cases typescript-eslint would catch. `tsc` runs with `strict` and the tests are the backstop.
+- Revisit, by adding a minimal typescript-eslint step for promise rules only, if a floating-promise bug ships, or once the rule leaves the nursery and its coverage is documented. Recorded in ADR-0008.
 - `deploy.yml`: `workflow_dispatch` only. Azure login with OIDC federated credentials, image build and push, `terraform apply`. Skips with a message when its repo variables are unset, so it never fails a fresh repo.
 
 **Releases.** SemVer for the template. Until MCP TypeScript SDK v2 is GA and `@rekog/mcp-nest` has released against it, releases are `0.x` pre-releases and the README says the template is built on a beta SDK. `1.0.0` is tagged only after both, and only once the v1 done criteria in the intent are met (concern 2). From `1.0.0`, a breaking change to env vars, endpoint paths, the `app.module.ts` seam or npm script names is a major release. `CHANGELOG.md` follows Keep a Changelog, newest first, grouped Added/Changed/Fixed/Removed. `docs/setup.md` tells engineers to start their own changelog and keep a note of the template version they came from.
@@ -393,7 +397,7 @@ The guidance is written for engineers building servers from the template, not fo
 
 ### 14. ADRs to write during Build
 
-Recorded in `docs/adr/` (MADR format): 0001–0006 are the decisions listed on issue #4, 0007 was added during design. The decision in each is the one this spec proposes.
+Recorded in `docs/adr/` (MADR format): 0001–0006 are the decisions listed on issue #4; 0007 and 0008 were added during design. The decision in each is the one this spec proposes.
 
 | ADR | Decision |
 | --- | --- |
@@ -404,6 +408,7 @@ Recorded in `docs/adr/` (MADR format): 0001–0006 are the decisions listed on i
 | 0005 | `nestjs-pino`, OTel Node SDK with vendor-neutral OTLP (protocol by env var), HMAC pseudonyms; reference deployment routes through a self-run OpenTelemetry Collector rather than the managed agent (sections 7, 10) |
 | 0006 | One reusable module plus a reference environment; internal ingress in a VNet-integrated environment by default (section 10) |
 | 0007 | `AGENTS.md` as the source with `CLAUDE.md` importing it; `template-` prefixed skills and path-scoped rules; `.mcp.json` limited to the local build (section 12) |
+| 0008 | Biome as the single linter and formatter; nursery `noFloatingPromises` at `error` with revisit triggers (section 9) |
 
 ## Open questions resolved
 
@@ -425,7 +430,9 @@ Carried forward, to verify at the start of Build:
 3. ~~**Entra ID client registration.**~~ Checked 2026-10-14: Entra supports neither DCR nor CIMD, with no announced plans. Resolved under concern 5. Recheck Auth0 and Keycloak support when writing the provider matrix.
 4. ~~**Agent file formats.**~~ Checked 2026-10-15: rules use `paths:` YAML frontmatter with globs; `@AGENTS.md` imports are supported and are the only form that works in every session; Copilot's coding agent reads `AGENTS.md`. One fix: the hook must exit `2` for Claude to see a failure, so it runs a small Node script rather than `npm` directly. Section 12 updated.
 5. ~~**Container Apps managed OpenTelemetry agent.**~~ Checked 2026-10-15: GA, but its Application Insights destination accepts traces and logs only, not metrics; gRPC only; single fixed replica; Terraform support documented only through AzAPI. **Decided (Joseph Searle): run an OpenTelemetry Collector as its own container app** exporting all signals to Application Insights, and have the server honour `OTEL_EXPORTER_OTLP_PROTOCOL` rather than hard-coding HTTP. Sections 7 and 10 updated.
-6. **Biome rule coverage.** Confirm Biome's type-aware rules cover floating and misused promises in async handlers, which typescript-eslint would have caught. If not, record the gap and rely on tests and `tsc` strict mode.
+6. ~~**Biome rule coverage.**~~ Checked 2026-10-15: `noFloatingPromises` exists since Biome 2.0 but is a nursery rule using Biome's own type inference, with default severity "information". **Decided (Joseph Searle): Biome only, rule enabled at `error`**, exact pin, `tsc` strict and tests as backstop, revisit triggers recorded. Section 9 updated.
+
+All build-time checks are resolved.
 
 ## Areas of concern
 
