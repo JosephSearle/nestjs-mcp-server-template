@@ -41,9 +41,18 @@ Changes to coding-agent files (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`
 - Metrics:
   - `mcp.server.operation.duration`, by method and tool, for every request including lists;
   - `mcp.server.errors`, by JSON-RPC code as sent;
-  - `mcp.server.auth.failures`, by reason, emitted once the token guard lands.
+  - `mcp.server.auth.failures`, by reason.
 - Identity recorded only as `enduser.pseudo.id`, HMAC-SHA256 of `sub` keyed with `LOG_PSEUDONYM_KEY`. Client address and raw identity attributes are scrubbed from spans, and no setting records them.
 - ADR-0005 (logging, OpenTelemetry and pseudonyms).
+- Every request to `/mcp` needs a bearer token, which `McpTokenGuard` validates with `jose`:
+  - only `AUTH_ALGORITHMS` (never `none` or HMAC), the exact `AUTH_ISSUER`, `AUTH_AUDIENCE`, `exp` and `nbf` with clock tolerance, `exp - iat` up to `AUTH_MAX_TOKEN_LIFETIME_SECONDS`, required `sub`, and `AUTH_REQUIRED_SCOPES`;
+  - keys only from `AUTH_JWKS_URI` or the issuer's discovery document, never from `jku` or `x5u`.
+- 401 with `WWW-Authenticate: Bearer resource_metadata="…"`, and 403 with `error="insufficient_scope"` and the scopes to ask for, at the door and per tool. An unreachable issuer is a 503.
+- Auth failure reasons `malformed`, `wrong_issuer`, `not_yet_valid` and `lifetime_exceeded`, alongside `missing`, `invalid_signature`, `wrong_audience`, `expired` and `insufficient_scope`.
+- `GET /.well-known/oauth-protected-resource/mcp` (RFC 9728), with `scopes_supported` from `src/app/scopes.ts`.
+- `src/app/scopes.ts` with `BASE_SCOPE` (`mcp:access`), passed to `PlatformModule.forRoot({ scopes })` from `app.module.ts`.
+- Token guard tests in `test/platform/auth/` for every rejection, and a check that only the guard reads the `Authorization` header.
+- ADR-0003 (validate every token in the server).
 
 ### Changed
 
