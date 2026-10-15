@@ -109,7 +109,8 @@ CHANGELOG.md  SECURITY.md  README.md
 MCP-Nest v2 has no `McpModule`. MCP runs as a NestJS microservice strategy.
 
 - `platform/mcp/` builds one `McpStrategy` with `name` and `version` from config, `transports`, `resolveUser`, `cacheHints`, `requestState` and `inputRequired` options.
-- HTTP: `new StreamableHttpTransport({ protocol: 'modern-only', responseMode: 'auto', security: { allowedOrigins, allowedHosts } })`. The route is a Nest controller, `@Controller('mcp') @UseGuards(McpTokenGuard)`, extending `McpHttpControllerFor(transport)`. The guard therefore covers every request to `/mcp`.
+- HTTP: `new StreamableHttpTransport({ protocol: 'modern-only', responseMode: 'auto', mount: false, security: { allowedOrigins, allowedHosts } })`. The route is a Nest controller, `@Controller('mcp') @UseGuards(McpTokenGuard)`, extending `StreamableHttpController`. The guard therefore covers every request to `/mcp`. The transport is built from config by a provider, and the controller gets its handlers through the `MCP_HTTP_HANDLER` token. `McpHttpControllerFor(transport)` was the first choice, but it reads the transport at import time, before config loads (changed in #13).
+- mcp-nest sets no body limit and no request timeout, so the template does: Express's JSON parser with `MCP_MAX_REQUEST_BYTES` (413), and `MCP_REQUEST_TIMEOUT_MS` as both Node's `requestTimeout` and a per-request deadline on `/mcp` (503 before headers are sent, otherwise the connection closes).
 - stdio: `new StdioTransport({ legacy: 'reject' })` in `main.stdio.ts`. Logs go to stderr. The entry refuses to start when `NODE_ENV=production`.
 - Transport is chosen by entry point, not by config. The Dockerfile only runs `dist/main.js`, so stdio can't be deployed by changing a variable.
 - HTTP adapter: Express (NestJS default; Fastify would add a second set of request-shape rules for `resolveUser`).

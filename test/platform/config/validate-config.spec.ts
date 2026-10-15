@@ -3,6 +3,7 @@ import {
 	formatProblems,
 	httpEntryProblems,
 	parseConfig,
+	stdioEntryProblems,
 	validateConfig,
 } from "../../../src/platform/config/validate-config";
 
@@ -220,6 +221,24 @@ describe("httpEntryProblems", () => {
 			httpEntryProblems({ AUTH_MODE: "dev", AUTH_ISSUER: undefined }),
 		).toEqual([]);
 	});
+});
+
+describe("stdioEntryProblems", () => {
+	it("refuses NODE_ENV=production and says which entry to run", () => {
+		const problems = stdioEntryProblems({ NODE_ENV: "production" });
+
+		expect(problems).toEqual([
+			"NODE_ENV: stdio is not allowed when NODE_ENV=production. Run the HTTP entry, dist/main.js.",
+		]);
+		expect(problems[0]).toMatch(LINE);
+	});
+
+	it.each(["development", "test"] as const)(
+		"allows NODE_ENV=%s",
+		(NODE_ENV) => {
+			expect(stdioEntryProblems({ NODE_ENV })).toEqual([]);
+		},
+	);
 });
 
 describe("validateConfig", () => {

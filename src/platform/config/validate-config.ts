@@ -211,6 +211,21 @@ export function httpEntryProblems({
 	return [];
 }
 
+/** Rules for the stdio entry only. stdio runs without auth, so it is never deployed (spec §2). */
+export function stdioEntryProblems({
+	NODE_ENV,
+}: Pick<AppConfig, "NODE_ENV">): string[] {
+	if (NODE_ENV === "production") {
+		return [
+			problem(
+				"NODE_ENV",
+				"stdio is not allowed when NODE_ENV=production. Run the HTTP entry, dist/main.js.",
+			),
+		];
+	}
+	return [];
+}
+
 export function formatProblems(problems: string[]): string {
 	return ["Invalid configuration:", ...problems.map((p) => `  ${p}`)].join(
 		"\n",

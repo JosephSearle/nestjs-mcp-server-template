@@ -11,6 +11,7 @@
 		"build": "nest build",
 		"start": "node dist/main.js",
 		"dev": "nest start --watch",
+		"dev:stdio": "nest start --watch --entryFile main.stdio",
 		"lint": "biome check .",
 		"format": "biome format --write .",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
@@ -32,6 +33,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.15",
+		"@modelcontextprotocol/client": "2.3.1",
 		"@nestjs/cli": "12.0.8",
 		"@nestjs/testing": "12.1.3",
 		"@types/express": "5.0.6",
