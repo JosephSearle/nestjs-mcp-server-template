@@ -1,5 +1,15 @@
 <h1 align="center">NestJS MCP Server Template</h1>
 
+<div align="center">
+
+[![License](https://img.shields.io/github/license/JosephSearle/nestjs-mcp-server-template)](LICENSE)
+[![Node.js version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FJosephSearle%2Fnestjs-mcp-server-template%2Fmain%2Fpackage.json&query=%24.engines.node&label=node&logo=nodedotjs)](.nvmrc)
+[![NestJS version](https://img.shields.io/github/package-json/dependency-version/JosephSearle/nestjs-mcp-server-template/@nestjs/core?label=NestJS&logo=nestjs)](https://nestjs.com)
+[![@rekog/mcp-nest version](https://img.shields.io/github/package-json/dependency-version/JosephSearle/nestjs-mcp-server-template/@rekog/mcp-nest)](https://www.npmjs.com/package/@rekog/mcp-nest)
+[![Code style: Biome](https://img.shields.io/badge/code_style-biome-60a5fa?logo=biome)](https://biomejs.dev)
+
+</div>
+
 > A GitHub template for production MCP servers built on NestJS and `@rekog/mcp-nest`.
 
 **Status:** pre-release (`0.x`). The template is under construction and doesn't serve MCP yet. Don't build production servers on it before `1.0.0`. [CHANGELOG.md](CHANGELOG.md) lists what has landed.
