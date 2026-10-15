@@ -12,7 +12,7 @@ Changes to coding-agent files (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`
 - NestJS 12 project on `@rekog/mcp-nest` 2.0.8, with the `src/platform/` and `src/app/` split and `src/app/app.module.ts` as the one seam.
 - Biome as the only linter and formatter, with `noFloatingPromises` at `error`.
 - Jest unit tests, strict TypeScript and the `dev`, `build`, `start`, `lint`, `format`, `typecheck` and `test` scripts.
-- Node 22.19 or newer, set in `engines` and `.nvmrc`.
+- Node 22.22.3 or newer on 22.x, or 24.15.0 or newer, set in `engines` and `.nvmrc`.
 - ADR-0001 (platform/app split) and ADR-0008 (Biome).
 - Apache-2.0 licence.
 - Config validated at startup by a Zod schema through `@nestjs/config`. Invalid config exits 1 and lists every problem as `<KEY>: <what's wrong>. <what to do>`, without values. Read it through `ConfigService<AppConfig, true>`.
@@ -20,7 +20,7 @@ Changes to coding-agent files (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`
 - Biome `noProcessEnv` at `error` in `src/`, except `src/platform/config/`.
 - Biome test rules at `error` in `test/`: no focused or skipped tests, no `done` callbacks, no deeply nested `describe` blocks.
 - ADR-0004 (config schema, transport by entry point, auth by `AUTH_MODE`).
-- CI workflow on pull requests and `main`, on Node 22.19 and 24: `biome ci`, typecheck, test, build and `npm audit --omit=dev --audit-level=high`. Read-only token, no secrets.
+- CI workflow on pull requests and `main`, on Node 22.22.3 and 24: `biome ci`, typecheck, test, build and `npm audit --omit=dev --audit-level=high`. Read-only token, no secrets.
 - CodeQL scanning for `javascript-typescript` and `actions` on pull requests, `main` and weekly.
 - Dependabot for `npm`, `github-actions`, `docker` and `terraform`, weekly, with minor and patch updates grouped.
 - Every third-party action pinned to a commit SHA.

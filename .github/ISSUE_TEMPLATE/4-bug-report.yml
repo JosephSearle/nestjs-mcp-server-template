@@ -89,7 +89,7 @@ body:
       label: Environment
       description: Node version, OS, gateway (if any), OAuth provider (if any), state store (if any).
       placeholder: |
-        Node 22.19.0, Ubuntu 24.04 (WSL2), Azure API Management, Entra ID, no state store
+        Node 22.22.3, Ubuntu 24.04 (WSL2), Azure API Management, Entra ID, no state store
     validations:
       required: true
 

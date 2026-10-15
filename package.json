@@ -5,7 +5,7 @@
 	"license": "Apache-2.0",
 	"description": "Template for production MCP servers on NestJS and @rekog/mcp-nest.",
 	"engines": {
-		"node": ">=22.19.0"
+		"node": "^22.22.3 || >=24.15.0"
 	},
 	"scripts": {
 		"build": "nest build",
