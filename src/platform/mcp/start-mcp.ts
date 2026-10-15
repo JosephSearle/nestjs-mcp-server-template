@@ -11,16 +11,17 @@ import {
 	StdioTransport,
 	type StreamableHttpTransport,
 } from "@rekog/mcp-nest";
+import { Logger } from "nestjs-pino";
 import type { AppConfig } from "../config/config.schema";
 import {
 	exitOnProblems,
 	httpEntryProblems,
 	stdioEntryProblems,
 } from "../config/validate-config";
+import { logToStderr } from "../telemetry/log-destination";
 import { applyHttpLimits } from "./http-limits";
 import { strategyOptions } from "./mcp.options";
 import { MCP_HTTP_TRANSPORT } from "./mcp.tokens";
-import { StderrLogger } from "./stderr-logger";
 
 const configOf = (app: INestApplication) =>
 	app.get<ConfigService<AppConfig, true>>(ConfigService);
@@ -48,9 +49,14 @@ export async function createHttpApp(
 	options: Pick<NestApplicationOptions, "logger"> = {},
 ): Promise<NestExpressApplication> {
 	const app = await NestFactory.create<NestExpressApplication>(appModule, {
+		bufferLogs: true,
 		...options,
 		bodyParser: false,
 	});
+	// Tests pass their own logger; everything else logs JSON through pino.
+	if (options.logger === undefined) {
+		app.useLogger(app.get(Logger));
+	}
 	const config = configOf(app);
 	exitOnProblems(
 		httpEntryProblems({
@@ -89,10 +95,12 @@ export async function startHttp(appModule: Type): Promise<void> {
  * it refuses to start when NODE_ENV=production.
  */
 export async function startStdio(appModule: Type): Promise<void> {
+	logToStderr();
 	const app = await NestFactory.create(appModule, {
-		logger: new StderrLogger(),
+		bufferLogs: true,
 		bodyParser: false,
 	});
+	app.useLogger(app.get(Logger));
 	const config = configOf(app);
 	exitOnProblems(
 		stdioEntryProblems({ NODE_ENV: config.get("NODE_ENV", { infer: true }) }),

@@ -31,6 +31,19 @@ Changes to coding-agent files (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`
 - `dev:stdio` script.
 - Example tool (`echo`), resource (`example://about`) and prompt (`summarise`) in `src/app/`, registered in `app.module.ts`.
 - Platform tests that fail on `statefulMode`, `serverMutator` or dynamic registration in `src/`.
+- JSON logs through `nestjs-pino`, to stdout (stderr under stdio). Every line carries `trace_id` and `span_id`.
+  - `authorization`, `cookie` and `set-cookie` headers are redacted, as is any key containing `token` or `secret` and any `requestState` key.
+  - The client address is dropped, and bodies are never logged.
+- OpenTelemetry Node SDK started with `node --import ./dist/platform/telemetry/instrumentation.js` (the `start` and `dev` scripts). Only `http`, `express` and `ioredis` are instrumented.
+  - OTLP is configured only by the standard `OTEL_*` variables. `OTEL_EXPORTER_OTLP_PROTOCOL` is `http/protobuf` (default) or `grpc`.
+  - Nothing is exported, and nothing connects, when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset.
+- A span for every `tools/call`, `resources/read` and `prompts/get`, named `<mcp.method.name> <name>` and parented on the `_meta` trace context when present.
+- Metrics:
+  - `mcp.server.operation.duration`, by method and tool, for every request including lists;
+  - `mcp.server.errors`, by JSON-RPC code as sent;
+  - `mcp.server.auth.failures`, by reason, emitted once the token guard lands.
+- Identity recorded only as `enduser.pseudo.id`, HMAC-SHA256 of `sub` keyed with `LOG_PSEUDONYM_KEY`. Client address and raw identity attributes are scrubbed from spans, and no setting records them.
+- ADR-0005 (logging, OpenTelemetry and pseudonyms).
 
 ### Changed
 
