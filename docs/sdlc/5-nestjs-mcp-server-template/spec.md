@@ -1,0 +1,476 @@
+---
+status: accepted
+linked_intent: docs/sdlc/5-nestjs-mcp-server-template/intent.md
+linked_issue: https://github.com/JosephSearle/nestjs-mcp-server-template/issues/4
+linked_epic: https://github.com/JosephSearle/nestjs-mcp-server-template/issues/5
+persona: personal
+skills_applied:
+  - security-baseline
+  - security-api        # added beyond the personal row: ticked on issue #4
+  - security-mcp        # added beyond the personal row: ticked on issue #4
+  - compliance-gdpr
+  - compliance-eu-ai-act
+  - brand-personal
+  - ux-personal
+skills_not_applied:
+  - security-llm        # unticked on issue #4: the template never calls a model
+  - security-agent      # the server is a tool provider, not an autonomous agent
+created: 2026-10-14
+---
+
+# Spec: v1 NestJS MCP server template
+
+Requirements and design for the v1 template accepted in [intent #2](intent.md) (epic #5).
+Library facts are checked against `@rekog/mcp-nest` 2.0.8 and its docs as of 2026-10-14.
+
+## Requirements
+
+### Functional
+
+| ID | Requirement | Source |
+| --- | --- | --- |
+| FR-1 | Engineers create a server with GitHub's "Use this template" and a setup guide. No package, no CLI. | Intent: template repository |
+| FR-2 | Template-owned setup lives apart from engineer-owned tools, resources and prompts, so later template releases merge with few conflicts. | Issue #4 scope |
+| FR-3 | Deployed servers serve Streamable HTTP on `/mcp`. stdio exists for local dev and tests only, and is never the container entry point. | Intent: transport |
+| FR-4 | Both transports serve MCP revision `2026-07-28` only. 2025-era requests are rejected. | Intent: protocol |
+| FR-5 | Every HTTP request to `/mcp` carries a bearer token that the server validates itself: signature, issuer, audience, expiry, not-before and required scopes. A gateway in front changes nothing. | Intent: auth |
+| FR-6 | Engineers pick an OAuth provider by config. Worked examples cover Entra ID, Auth0 and Keycloak. | Intent: auth |
+| FR-7 | MCP-Nest's built-in authorization server is available for local dev and demos, and refuses to start in production. | Intent: auth |
+| FR-8 | Per-tool authorization by scope and role. Tools are protected by default. | security-mcp §7 |
+| FR-9 | The server publishes RFC 9728 protected-resource metadata and answers 401/403 with `WWW-Authenticate`. | MCP auth spec |
+| FR-10 | No state is kept in process between requests. Redis is the documented example for state that must survive. | Intent: state |
+| FR-11 | Config is validated at startup. Invalid config stops the process with a list of what's wrong. | Intent: production setup |
+| FR-12 | OpenTelemetry traces and metrics, and structured JSON logs correlated with traces. | Intent: production setup |
+| FR-13 | Liveness and readiness endpoints, and graceful shutdown on `SIGTERM`. | Intent: production setup |
+| FR-14 | npm scripts open the Inspector web UI against stdio and local HTTP, using a committed Inspector config. | Intent: Inspector |
+| FR-15 | CI runs lint, type-check, unit tests, Inspector CLI smoke tests, CodeQL and Dependabot. | Intent: v1 done |
+| FR-16 | A Terraform reference deployment on Azure Container Apps. | Intent: deployment |
+| FR-17 | Tagged releases with a changelog. | Intent: releases |
+| FR-18 | A gateway expectations document. A gateway is required for production; none is set up or recommended. | Intent: gateway; concern 1 |
+| FR-19 | Coding-agent guidance ships with the template: `AGENTS.md` for any agent, plus Claude Code settings, path-scoped rules, skills and a project MCP config. | Intent (amended under concern 10) |
+
+### Non-functional
+
+| ID | Requirement |
+| --- | --- |
+| NFR-1 | Node 22.19 or newer (`engines`, `.nvmrc`, CI, Dockerfile). |
+| NFR-2 | A fresh repo from the template passes CI with no secrets, no Azure access and no edits. |
+| NFR-3 | Deployed dependencies pinned to exact versions, with a committed lockfile. Third-party actions pinned to a commit SHA. |
+| NFR-4 | No secrets, tokens or raw personal data in logs, traces or metrics. |
+| NFR-5 | Zero-config local start: `npm install && npm run dev:stdio` works without a `.env` file. |
+| NFR-6 | No new abstractions where config, an example or a doc will do. |
+
+## Design approach
+
+### 1. Repo layout (ADR-0001)
+
+```
+src/
+  main.ts                      # HTTP entry. Template-owned, thin.
+  main.stdio.ts                # stdio entry. Template-owned. Local use only.
+  platform/                    # Template-owned. Updated by template releases.
+    config/                    # Zod env schema, loader, typed ConfigService
+    auth/                      # Token guard, claim mapping, metadata controller, dev auth wiring
+    mcp/                       # McpStrategy factory, transports, guarded /mcp controller
+    telemetry/                 # instrumentation.ts (OTel SDK), logger, tool-call interceptor
+    health/                    # /healthz, /readyz
+    lifecycle/                 # Shutdown and drain
+    platform.module.ts
+  app/                         # Engineer-owned. Template releases never touch it after creation.
+    app.module.ts              # The one seam: lists the engineer's @McpController classes
+    tools/example.tools.ts     # One scoped tool, one tool showing an ownership check
+    resources/example.resources.ts
+    prompts/example.prompts.ts
+    scopes.ts                  # BASE_SCOPE and the server's other scope names
+test/
+  platform/                    # Template tests
+  app/                         # Engineer tests, starting with the examples
+  smoke/                       # Inspector CLI smoke tests and the test JWKS stub
+infra/terraform/               # See section 10
+docs/
+  setup.md  upgrading.md  gateway.md  state.md  operations.md
+  security.md  privacy.md  auth/{overview,entra-id,auth0,keycloak,local-dev}.md
+  adr/0001-…0008-….md
+.claude/                       # See section 12
+  settings.json
+  rules/  skills/  hooks/
+AGENTS.md  CLAUDE.md  .mcp.json
+inspector.config.json  biome.json
+.env.example  Dockerfile  .dockerignore  .nvmrc
+CHANGELOG.md  SECURITY.md  README.md
+```
+
+- `src/app/app.module.ts` is the only file `platform/` imports from `app/`. `platform/` never imports engineer code otherwise.
+- `docs/upgrading.md` explains pulling a template release: add the template as a remote, merge the release tag, resolve conflicts. Conflicts should only appear in `platform/`, `docs/`, CI, `infra/` and the template-owned agent files in section 12.
+- Rejected: a separate `platform` workspace package. It's a package in all but name, which the intent ruled out.
+
+### 2. MCP wiring
+
+MCP-Nest v2 has no `McpModule`. MCP runs as a NestJS microservice strategy.
+
+- `platform/mcp/` builds one `McpStrategy` with `name` and `version` from config, `transports`, `resolveUser`, `cacheHints`, `requestState` and `inputRequired` options.
+- HTTP: `new StreamableHttpTransport({ protocol: 'modern-only', responseMode: 'auto', security: { allowedOrigins, allowedHosts } })`. The route is a Nest controller, `@Controller('mcp') @UseGuards(McpTokenGuard)`, extending `McpHttpControllerFor(transport)`. The guard therefore covers every request to `/mcp`.
+- stdio: `new StdioTransport({ legacy: 'reject' })` in `main.stdio.ts`. Logs go to stderr. The entry refuses to start when `NODE_ENV=production`.
+- Transport is chosen by entry point, not by config. The Dockerfile only runs `dist/main.js`, so stdio can't be deployed by changing a variable.
+- HTTP adapter: Express (NestJS default; Fastify would add a second set of request-shape rules for `resolveUser`).
+- Cache hints stay `cacheScope: 'private'` for every list result. `tools/list` is filtered per caller, so `public` would leak one caller's tool set to another.
+- Multi-round requests (elicitation, sampling): `requestState.verify` uses `createRequestStateCodec` with an HMAC key from `MCP_REQUEST_STATE_SECRET`. All replicas share the key, so a retry can land on any replica. `inputRequired.maxRounds` and `roundTimeoutMs` are set from config.
+- No dynamic tool registration (`serverMutator`, dynamic capabilities) in the template. Tool definitions are static code reviewed through PRs.
+
+### 3. Auth (ADR-0002, ADR-0003)
+
+Two modes, set by `AUTH_MODE`:
+
+**`external` (default, the only mode allowed in production).** An external OAuth 2.1 / OIDC issuer (Entra ID, Auth0, Keycloak) mints tokens. The server is a pure resource server.
+
+- `McpTokenGuard` uses `jose` (`createRemoteJWKSet`, `jwtVerify`):
+  - Algorithms allowlisted (`AUTH_ALGORITHMS`, default `RS256`). `none` and HMAC algorithms are rejected.
+  - `iss` must equal `AUTH_ISSUER` exactly.
+  - `aud` must include `AUTH_AUDIENCE` (default: `MCP_PUBLIC_URL` + `/mcp`, per RFC 8707).
+  - `exp` and `nbf` checked with `AUTH_CLOCK_TOLERANCE_SECONDS` (default 30).
+  - Token lifetime (`exp - iat`) must not exceed `AUTH_MAX_TOKEN_LIFETIME_SECONDS` (default 5400, the top of Entra's default range). This bounds how long a stolen token works.
+  - `AUTH_REQUIRED_SCOPES` (optional) must all be present to enter at all.
+  - The JWKS URL comes from `AUTH_JWKS_URI` or the issuer's discovery document. `jku`, `x5u` and other key-location headers in the token are ignored.
+- The guard is template-owned security code (concern 3), so it ships with a dedicated test suite in `test/platform/auth/`: `alg: none`, an HMAC token signed with the public key, wrong issuer, wrong audience, expired, not yet valid, lifetime over the cap, missing required scope, unknown `kid`, malformed token, and the correct `WWW-Authenticate` on each failure. Every rejection reason is also a metric label (section 7).
+- Failures return 401 with `WWW-Authenticate: Bearer resource_metadata="<MCP_PUBLIC_URL>/.well-known/oauth-protected-resource/mcp"`. A missing per-tool scope returns 403 with `error="insufficient_scope"` and the needed `scope`, so clients can step up.
+- Claims are normalised to `{ sub, scopes[], roles[] }` by a claim map chosen with `AUTH_PROVIDER` (`entra`, `auth0`, `keycloak`, `generic`). For example, Entra puts scopes in `scp` and roles in `roles`; Keycloak puts roles in `realm_access.roles`. `resolveUser` returns the normalised user, which MCP-Nest's `@ToolScopes` and `@ToolRoles` read.
+- `AUTH_SCOPES_CLAIM` and `AUTH_ROLES_CLAIM` override where scopes and roles are read from, as a dotted path (for example `realm_access.roles`), for any issuer the presets don't cover (concern 7). `generic` uses them directly, defaulting to `scope` (space-delimited string or array) and `roles`. Overrides win over a preset. No engineer edits `src/platform/auth/` to support a new issuer.
+- `/.well-known/oauth-protected-resource/mcp` returns `resource`, `authorization_servers`, `scopes_supported`, `bearer_methods_supported: ['header']` and `mcp_versions_supported: ['2026-07-28']`.
+- **Choice: one guard plus a config switch, not one module per provider.** The three providers differ only in issuer format, audience and claim names, which is config plus a small map. Provider steps (app registration, audience, token version, scopes) live in `docs/auth/<provider>.md`.
+- **Entra ID is the lead worked example** (concern 5); `AUTH_PROVIDER` still defaults to `generic`, so the code assumes no provider. Entra supports neither Dynamic Client Registration nor Client ID Metadata Documents, so `docs/auth/entra-id.md` covers the three ways an MCP client gets a client ID: pre-authorized well-known clients (for example VS Code), an admin-registered client, and gateway-brokered registration, which is the production path since a gateway is required (section 4).
+- `docs/auth/overview.md` has a provider matrix: Dynamic Client Registration, Client ID Metadata Documents and pre-registered clients, for Entra ID, Auth0 and Keycloak, so the registration gap is visible before anyone picks a provider.
+
+**`dev`.** Wires `@rekog/mcp-nest-auth` (`McpAuthModule`) so the server runs its own authorization server, delegating login to GitHub or Google. Startup fails when `NODE_ENV=production` or `MCP_PUBLIC_URL` isn't a `localhost` URL. Documented in `docs/auth/local-dev.md`. `mcpVersionsSupported` is narrowed to `['2026-07-28']`. Configured by the `DEV_AUTH_*` variables (section 6), with the in-memory store and `cookie-parser`, which `McpAuthModule` requires. `@rekog/mcp-nest-auth` and `cookie-parser` are dev dependencies loaded only in this mode, so they never reach the production image.
+
+**stdio** has no HTTP request and no token. It's a local process the developer starts, so it runs without auth. This is why stdio is never deployed.
+
+**Per-tool authorization.** No `allowUnauthenticatedAccess`. Every caller must be authenticated, whatever decorators a tool has. `@PublicTool()` is not used anywhere in the template, and `docs/security.md` says when it's acceptable.
+
+**Explicit access decision on every tool** (concern 8). A platform test in `test/platform/` discovers every `@Tool` handler and fails CI if it has none of `@ToolScopes`, `@ToolRoles` or `@PublicTool`. The failure names the class and handler and says which decorators satisfy it. A tool open to any authenticated caller states that with `@ToolScopes([BASE_SCOPE])`.
+
+**Scope names** live in `src/app/scopes.ts` (engineer-owned), which exports `BASE_SCOPE` (default `mcp:access`, renamed per server) and the server's other scopes. `app.module.ts` re-exports them, so the seam stays one file. The protected-resource metadata builds `scopes_supported` from this list, and `docs/auth/<provider>.md` shows how to register the same scope names with each issuer. Setting `AUTH_REQUIRED_SCOPES` to `BASE_SCOPE`'s value also makes it a gate at the door, which is the recommended production setting.
+
+MCP-Nest 2.0.8 applies these decorators to tools only. Resources and prompts get the token check from the guard and nothing finer. So a resource or prompt that returns per-user data must check ownership itself, and `docs/security.md` and `mcp-tools.md` say so. If MCP-Nest adds per-resource or per-prompt authorization, extend the test to cover them.
+
+**Object-level checks.** The template can't know an engineer's objects. The example tool shows the pattern: read `ctx.getUser().sub` and check ownership before touching an ID from the arguments. `docs/security.md` has the review checklist. No `assertOwner()` helper: it couldn't know the data model and would imply coverage it can't give.
+
+**Tool review in PRs.** The default PR template gains a "Tools, resources and prompts" checklist, shown when a PR touches `src/app/`: ownership checked before using any ID from arguments; Zod schemas `.strict()`; only needed fields returned; no shell string concatenation; outbound URLs allowlisted; third-party content marked in results.
+
+**No token passthrough.** The server never forwards its inbound token to another API. `docs/auth/overview.md` shows the two allowed patterns for calling downstream APIs: on-behalf-of / token exchange for a token audienced to that API, or the server's own managed identity.
+
+### 4. Gateway expectations (`docs/gateway.md`)
+
+The server reads:
+
+| Input | Use |
+| --- | --- |
+| `Authorization: Bearer` | Validated per section 3. Its audience must be this server. |
+| `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name` | Revision `2026-07-28` routing headers. Passed through unchanged. |
+| `traceparent`, `tracestate`, `baggage` (HTTP headers and `_meta`) | Trace parent. `_meta` wins when both exist, since it is set by the MCP client. |
+| `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host` | Trusted only for `TRUST_PROXY_HOPS` hops (default 0). |
+| `Origin`, `Host` | Checked against `MCP_ALLOWED_ORIGINS` / `MCP_ALLOWED_HOSTS` when set. |
+
+The server emits `WWW-Authenticate` on 401 and 403, and JSON-RPC errors with generic messages.
+
+**A production deployment must sit behind an MCP gateway.** The server is built to scale horizontally behind one: it is stateless, so the gateway can spread load across any number of replicas, and it owns rate limiting, quotas and abuse protection. The server never rate-limits and offers no in-process fallback. Running without a gateway is for local development and demos only. `docs/gateway.md`, `docs/setup.md` and the Terraform README all say so up front.
+
+A gateway must:
+
+- Forward the client's token unchanged, or exchange it for one audienced to this server. The server ignores identity headers such as `X-User-Id`; identity comes only from a validated token.
+- Propagate W3C trace context.
+- Enforce rate limits, request timeouts and TLS.
+- Not cache responses across callers.
+
+### 5. State
+
+- No in-process state between requests. The template never sets `statefulMode` (it's legacy-era only), and a platform test fails if it's enabled.
+- `docs/state.md` shows Redis through `ioredis`: a provider in `src/app/`, keys namespaced by the caller's `sub`, a TTL on every key, and a delete-by-user example (`SCAN` on the user prefix). `ioredis` is not a default dependency.
+- `/readyz` checks Redis when `REDIS_URL` is set.
+
+### 6. Config (ADR-0004)
+
+- A Zod schema over `process.env` in `platform/config/`, run through `@nestjs/config`'s `validate` hook. Zod is already a peer dependency for tool schemas.
+- Failure prints every problem as `<KEY>: <what's wrong>. <what to do>`, never the value. For example: `AUTH_ISSUER: required when AUTH_MODE=external. Set it to your issuer URL.` Exit code 1.
+- Typed `AppConfig` injected through Nest DI. No `process.env` reads outside `platform/config/`.
+- OpenTelemetry uses its own standard `OTEL_*` variables rather than template-specific ones.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `NODE_ENV` | `development` | `production` disables `dev` auth and stdio |
+| `PORT` | `3000` | |
+| `MCP_SERVER_NAME` | `name` in `package.json` | |
+| `MCP_SERVER_VERSION` | `version` in `package.json` | |
+| `MCP_PUBLIC_URL` | `http://localhost:3000` | Required in production. Builds the resource URL and default audience |
+| `MCP_ALLOWED_ORIGINS`, `MCP_ALLOWED_HOSTS` | unset | Comma-separated |
+| `MCP_MAX_REQUEST_BYTES` | `1048576` | Body limit |
+| `MCP_REQUEST_TIMEOUT_MS` | `60000` | |
+| `MCP_INPUT_MAX_ROUNDS`, `MCP_INPUT_ROUND_TIMEOUT_MS` | `5`, `300000` | Multi-round limits |
+| `MCP_REQUEST_STATE_SECRET` | random per process in development | Required in production |
+| `AUTH_MODE` | `external` | `external` or `dev` |
+| `AUTH_PROVIDER` | `generic` | `entra`, `auth0`, `keycloak`, `generic` |
+| `AUTH_SCOPES_CLAIM`, `AUTH_ROLES_CLAIM` | preset, or `scope` / `roles` for `generic` | Dotted claim paths; override the preset |
+| `AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_JWKS_URI` | — | `AUTH_ISSUER` required for `external` |
+| `AUTH_ALGORITHMS` | `RS256` | |
+| `AUTH_REQUIRED_SCOPES` | unset | |
+| `AUTH_CLOCK_TOLERANCE_SECONDS` | `30` | |
+| `AUTH_MAX_TOKEN_LIFETIME_SECONDS` | `5400` | |
+| `DEV_AUTH_PROVIDER` | `github` | `github` or `google`. `AUTH_MODE=dev` only |
+| `DEV_AUTH_CLIENT_ID`, `DEV_AUTH_CLIENT_SECRET` | — | OAuth app for local login. Required for `AUTH_MODE=dev` |
+| `DEV_AUTH_JWT_SECRET` | random per process | Signs the built-in server's tokens. `AUTH_MODE=dev` only |
+| `LOG_LEVEL` | `info` | |
+| `LOG_PSEUDONYM_KEY` | random per process in development | Required in production. See section 7 |
+| `TRUST_PROXY_HOPS` | `0` | |
+| `SHUTDOWN_TIMEOUT_MS` | `25000` | Below Container Apps' 30 s grace period |
+| `REDIS_URL` | unset | Only when the Redis example is used |
+
+The HTTP server in development starts without `AUTH_ISSUER` only if `AUTH_MODE=dev`. NFR-5 is met through stdio, which needs no auth config.
+
+### 7. Logging and OpenTelemetry (ADR-0005)
+
+**Logging.** `nestjs-pino`. JSON to stdout (stderr under stdio). Every line carries `trace_id` and `span_id`. Redaction paths: `req.headers.authorization`, `req.headers.cookie`, `res.headers["set-cookie"]`, any `*token*`, `*secret*` and `requestState` key. Tool arguments and results are not logged by default.
+
+**Tracing.** `@opentelemetry/sdk-node`, loaded with `node --import ./dist/platform/telemetry/instrumentation.js` so it starts before Nest. Instrumentations limited to `http`, `express` and `ioredis` (if present). OTLP, configured only by the standard variables: `OTEL_EXPORTER_OTLP_ENDPOINT`, and `OTEL_EXPORTER_OTLP_PROTOCOL` (`http/protobuf` by default, `grpc` supported), so the server works with any collector. No exporter runs when the endpoint is unset. The server never uses a vendor-specific exporter or distro. A Nest interceptor wraps every MCP call in a span named `<mcp.method.name> <tool or resource name>`, following the OpenTelemetry MCP semantic conventions (development status), with the `_meta` trace context as parent when present.
+
+**Metrics.** Request count and duration by method and tool, error count by JSON-RPC code, auth failures by reason (`missing`, `invalid_signature`, `wrong_audience`, `expired`, `insufficient_scope`).
+
+**Resource attributes.** `service.name`, `service.version`, `deployment.environment.name`.
+
+**Personal data in telemetry.**
+
+- Identity appears as `enduser.pseudo.id` = HMAC-SHA256 of `sub` keyed with `LOG_PSEUDONYM_KEY`. Raw `sub`, email, name and tokens are never recorded, and there is no setting to record them (concern 4).
+- Investigating a user means computing their pseudonym with the production key and searching for it. `docs/operations.md` describes doing this in a restricted context with access to Key Vault, never by copying the key to a workstation.
+- `LOG_PSEUDONYM_KEY` must outlive the telemetry retention period, since rotating it breaks correlation across the rotation. Rotate on compromise or on a schedule longer than retention, and record each rotation date.
+- Client IP (`client.address`) is dropped by default.
+- `docs/privacy.md` lists what the template records and why, and gives a record-of-processing entry for the deployer to complete.
+
+### 8. Health and shutdown
+
+- `GET /healthz`: liveness. 200 while the process runs.
+- `GET /readyz`: readiness. 200 when config is loaded, the JWKS has been fetched at least once and Redis answers (if configured). 503 once shutdown starts.
+- Both unauthenticated, return `{"status":"ok"}` or `{"status":"unavailable"}` only, and are excluded from traces.
+- On `SIGTERM`: readiness goes 503, the server stops accepting connections, in-flight requests drain up to `SHUTDOWN_TIMEOUT_MS`, telemetry flushes, the process exits 0. Uses `app.enableShutdownHooks()` and `@nestjs/terminus`.
+
+### 9. Inspector, scripts and CI
+
+**npm scripts.** npm's colon convention is used for script names (an ecosystem override of brand-personal §2's kebab-case).
+
+| Script | Does |
+| --- | --- |
+| `dev`, `dev:stdio` | Run HTTP or stdio entry with watch |
+| `build`, `start` | Compile; run `dist/main.js` with instrumentation |
+| `lint`, `format`, `typecheck` | Biome (`biome check` lints and checks formatting; `biome format --write` formats), `tsc --noEmit` |
+| `test` | Jest unit tests |
+| `inspect` | Inspector web UI against the stdio server from `inspector.config.json` |
+| `inspect:http` | Inspector web UI against `http://localhost:3000/mcp` |
+| `test:smoke` | Inspector CLI against stdio and HTTP |
+
+- `@modelcontextprotocol/inspector` v2 (2.11.0 or later; its `engines` is `node >=22.19.0`, which sets NFR-1) is an exact-pinned dev dependency, so CI never resolves a newer Inspector.
+- `inspector.config.json` uses the Inspector's `mcpServers` format and defines `local-stdio` (`node dist/main.stdio.js`) and `local-http` (`"type": "http"`, `http://localhost:3000/mcp`), both with `"protocolEra": "modern"`. The Inspector's default era is `legacy`, so leaving the field out would make it open with `initialize` and the server would reject it. `2026-07-28` is the only modern revision, so `modern` pins it.
+- Every script reads the committed file with `--config`, which is read-only and errors if the file is missing, rather than `--catalog`, which the Inspector writes to.
+- **Smoke tests** use the Inspector CLI with `--format json`, `jq -e` assertions and `--connect-timeout` set on every call. stdio: `initialize` probe, `tools/list`, call the example tool, read the example resource, get the example prompt. HTTP: the same calls with `--header 'Authorization: Bearer <token>'`, plus a call with no token and one with a wrong-audience token, each asserting exit code `3` (the CLI's "authentication required" code, raised on 401/403). The HTTP run starts a test JWKS stub (generated key pair, served on localhost) and mints short-lived tokens from it, so the real guard runs with no external issuer and no secrets. CI sets `MCP_STORAGE_DIR` and `MCP_INSPECTOR_OAUTH_STATE_PATH` to a scratch directory and never starts interactive OAuth.
+
+**Workflows** (`.github/workflows/`, `permissions: contents: read` unless stated, actions pinned to SHAs):
+
+- `ci.yml` on pull requests and `main`: install, `biome ci` (lint and formatting, no writes), typecheck, test, build, smoke tests, `npm audit --omit=dev --audit-level=high`, Docker build (no push), `terraform fmt -check` and `terraform init -backend=false && terraform validate`. Node 22.19.x and 24.x.
+- `codeql.yml`: `javascript-typescript` and `actions`, on pull requests, `main` and weekly.
+- `.github/dependabot.yml`: `npm`, `github-actions`, `docker`, `terraform`, weekly, minor and patch grouped.
+- `release.yml` on `v*` tags: runs CI, then creates a GitHub Release from that version's `CHANGELOG.md` section (`contents: write`).
+- `agent-files.yml` (template repo only; removed by `docs/setup.md` in new servers): on pull requests, fails when `.claude/`, `AGENTS.md`, `CLAUDE.md` or `.mcp.json` change without an entry under the `### Agent files` subsection of the `Unreleased` changelog section (concern 9).
+- `deploy.yml`: `workflow_dispatch` only. Azure login with OIDC federated credentials, image build and push, `terraform apply`. Skips with a message when its repo variables are unset, so it never fails a fresh repo.
+
+**Tooling.** Biome is the single linter and formatter, configured in `biome.json`, exact-pinned like other dev dependencies. No ESLint or Prettier.
+
+- `noFloatingPromises` (nursery, `types` domain) is enabled at `error`, so un-awaited promises in tools, the guard and shutdown fail CI. Nursery rules can change between releases, which the exact pin contains; Dependabot bumps to Biome are reviewed for rule changes.
+- Biome's type inference is its own, not the TypeScript compiler's, so it may miss cases typescript-eslint would catch. `tsc` runs with `strict` and the tests are the backstop.
+- Revisit, by adding a minimal typescript-eslint step for promise rules only, if a floating-promise bug ships, or once the rule leaves the nursery and its coverage is documented. Recorded in ADR-0008.
+
+**Releases.** SemVer for the template. Until MCP TypeScript SDK v2 is GA and `@rekog/mcp-nest` has released against it, releases are `0.x` pre-releases and the README says the template is built on a beta SDK. `1.0.0` is tagged only after both, and only once the v1 done criteria in the intent are met (concern 2). From `1.0.0`, a breaking change to env vars, endpoint paths, the `app.module.ts` seam or npm script names is a major release. `CHANGELOG.md` follows Keep a Changelog, newest first, grouped Added/Changed/Fixed/Removed. `docs/setup.md` tells engineers to start their own changelog and keep a note of the template version they came from.
+
+**Container.** Multi-stage `Dockerfile`, `node:22-alpine` pinned by digest, `npm ci --omit=dev`, non-root user, `CMD` runs the HTTP entry only.
+
+### 10. Terraform (ADR-0006)
+
+```
+infra/terraform/
+  modules/container-app/       # Container App, identity, probes, ingress, secrets
+  modules/otel-collector/      # Collector container app and config.yaml
+  envs/reference/
+    main.tf  variables.tf  outputs.tf  versions.tf
+    backend.tf                 # azurerm backend, partial config
+    terraform.tfvars.example
+    .terraform.lock.hcl        # committed
+```
+
+- `azurerm` provider pinned with the lock file. State in an Azure Storage backend configured at `init`; no state in the repo.
+- Resources: Log Analytics workspace (retention variable, default 30 days), a virtual network with an infrastructure subnet for the environment, a VNet-integrated Container Apps environment, user-assigned managed identity, Azure Container Registry (AcrPull for the identity), Key Vault with RBAC holding `MCP_REQUEST_STATE_SECRET` and `LOG_PSEUDONYM_KEY`, referenced as Container App secrets, an Application Insights resource (workspace-based), the OpenTelemetry Collector container app, and the server's Container App.
+- Container App: HTTPS only, liveness and readiness probes on `/healthz` and `/readyz`, `min_replicas` 1, `max_replicas` a variable (default 3) as a cost ceiling, HTTP scale rule.
+- Ingress is internal by default (concern 6): only apps in the same Container Apps environment or resources in its virtual network can reach the server. The gateway runs either as another container app in the environment or inside the VNet (for example Azure API Management with VNet integration).
+- `external_ingress` (default `false`) makes the server public for demos only. When `true`, Terraform outputs a warning that this is not a production setup, and the README repeats it.
+- Gateways hosted outside Azure: the README documents restricting external ingress to the gateway's egress IPs with Container Apps IP restrictions. Not built into the module.
+- **Telemetry** (check 5). An OpenTelemetry Collector (contrib distribution, image pinned by digest) runs as its own container app in the same environment, with internal ingress only. It receives OTLP from the server and sends traces, metrics and logs to Application Insights through its `azuremonitor` exporter. The server's `OTEL_EXPORTER_OTLP_ENDPOINT` points at the collector's internal address.
+  - Not the Container Apps managed OpenTelemetry agent: its Application Insights destination takes no metrics, it speaks gRPC only, it runs as one fixed replica, and it drops data after about five minutes of backlog.
+  - Collector config lives in `infra/terraform/modules/otel-collector/config.yaml`: `memory_limiter` and `batch` processors, a bounded retry queue, and an attribute filter that drops `client.address`, `enduser.id` and HTTP header attributes as a second line of defence behind section 7's redaction.
+  - The Application Insights connection string reaches the collector as a Key Vault-referenced secret. `min_replicas` 1; scales on CPU.
+  - Swapping backends means editing the collector config only; the server is unchanged.
+  - Dependabot doesn't track an image digest inside a Terraform string, so the collector digest is a variable that each template release reviews and bumps (release checklist in `docs/upgrading.md`).
+- Redis is not provisioned. `docs/state.md` points to Azure Managed Redis.
+- No gateway is provisioned. On its own, the reference deployment is not production-ready; its README says a gateway must front it in production (section 4).
+
+### 11. Docs and repo hygiene
+
+- `README.md`: one heading (fixes the triplicated heading, which is also UTF-16; convert to UTF-8), one-line description, "Use this template" setup, usage, then config, docs index and licence.
+- `SECURITY.md` points to private vulnerability reporting.
+- `docs/security.md`: the OWASP API and MCP Top 10 self-review, one row per item with how the template addresses it, what the engineer owns, and the evidence. Filling it in for the template is the v1 security review.
+- Docs follow brand-personal §1: short sentences, imperative mood, no marketing language.
+
+### 12. Coding-agent tooling (ADR-0007)
+
+The guidance is written for engineers building servers from the template, not for maintaining the template. Every file below ships to every server created from it.
+
+**Instructions.**
+
+- `AGENTS.md` is the single source of agent guidance, readable by Claude Code, Copilot and other agents. It covers: the `platform`/`app` split and the one seam; the npm scripts and what "done" means (`lint`, `typecheck`, `test`, `test:smoke` pass); the tool-authoring rules below in summary; and where the docs live. It ends with an `## Engineer notes` section that template releases never edit.
+- `CLAUDE.md` imports it with `@AGENTS.md` and adds only Claude Code specifics: that path rules live in `.claude/rules/` and which skills exist. No guidance is duplicated between the two files.
+- The import is required, not belt and braces: Claude Code reads `AGENTS.md` natively only when no `CLAUDE.md` exists, and some sessions can't read it natively at all. The import works in every session and every Claude Code version, and an engineer adding a `CLAUDE.local.md` doesn't stop `AGENTS.md` loading.
+- GitHub Copilot's coding agent reads `AGENTS.md` directly.
+
+**`.claude/settings.json`** (kept small, since template and engineers both edit it):
+
+- `permissions.allow`: the npm scripts in section 9 and read-only `git` commands.
+- `permissions.ask`: edits to `src/platform/**`, `.github/**` and `infra/**`.
+- `permissions.deny`: reading `.env` and `.env.*` (except `.env.example`), `infra/**/*.tfstate*` and `infra/**/*.tfvars` (except `*.tfvars.example`).
+- One `PostToolUse` hook after edits to `src/**`. It runs `.claude/hooks/post-edit-check.mjs` in exec form (`"command": "node"`, `"args"` holding the script path, so no shell). Two handlers with `if: "Edit(src/**)"` and `if: "Write(src/**)"`, since `if` holds one rule. The script runs `npm run lint` (Biome) and `npm run typecheck` with fixed arguments and no tool input. On failure it writes the output to stderr and exits `2`, which is the only exit code that shows the failure to Claude; a plain non-zero exit would only show the user a notice. Node rather than a shell script, so it runs on Windows without WSL.
+- `.claude/settings.local.json` is git-ignored for personal overrides.
+
+**`.claude/rules/`**, path-scoped with `paths` frontmatter:
+
+| File | Paths | Says |
+| --- | --- | --- |
+| `platform.md` | `src/platform/**`, `test/platform/**` | Template-owned. Prefer config or `src/app/`; changes here are upstream changes and conflict on upgrade. |
+| `mcp-tools.md` | `src/app/**` | Every tool gets `@ToolScopes` or `@ToolRoles` unless deliberately public; check ownership before using an ID from arguments; Zod schemas use `.strict()`; return only needed fields; no shell string concatenation; allowlist outbound URLs and recheck redirects; mark third-party content in results; never log tool arguments containing personal data; add a test per tool. |
+| `config.md` | `src/platform/config/**`, `.env.example` | New variables are SCREAMING_SNAKE_CASE, validated in the Zod schema, documented in the section 6 table in `docs/operations.md`, and never given real values in `.env.example`. |
+| `terraform.md` | `infra/**` | Secrets via Key Vault references only; no public ingress without the explicit variable; pin providers; run `terraform fmt` and `validate`. |
+
+**`.claude/skills/`**, prefixed `template-` so engineers' own skills never collide on upgrade:
+
+| Skill | Does |
+| --- | --- |
+| `template-add-tool` | Scaffold a tool in `src/app/tools/`, register it in `app.module.ts`, add a test and a smoke-test call, and apply `mcp-tools.md`. |
+| `template-add-resource` | Same for a resource or resource template. |
+| `template-add-prompt` | Same for a prompt. |
+| `template-upgrade` | Merge a template release tag, read its changelog entry, resolve conflicts with `src/app/` and engineer notes winning, run the full check. |
+
+**`.mcp.json`** (repo root; Claude Code does not read `.claude/mcp.json`):
+
+- One server, `local`: the server's own stdio build, `node dist/main.stdio.js`, so the agent can call the tools it is building.
+- No remote servers, no credentials, no `env` with secrets. Claude Code asks before first use of a project server.
+
+**Not shipped:** the template maintainer's own SDLC and policy skills. They live at user level; servers created from the template don't depend on them.
+
+### 13. Policy assessment summary
+
+| Policy | Outcome |
+| --- | --- |
+| security-baseline §1 secrets | Key Vault references and env injection; `.env` git-ignored; `.env.example` has no values; agents denied reading `.env*`, state and real `tfvars` (section 12). Met. |
+| security-baseline §2 dependencies | Exact pins, lockfile, Dependabot, CodeQL. Beta upstream: `0.x` until SDK v2 GA (concern 2, resolved). Agent files as a shipped dependency: changelog disclosure, gated upgrades and a CI check (concern 9, resolved). Met. |
+| security-baseline §3 exposure | Health endpoints minimal; ingress internal by default, public only as an explicit demo opt-in (concern 6, resolved). Met. |
+| security-baseline §4 data handling | Redaction and pseudonym-only identity (section 7; concern 4, resolved). Met. |
+| security-baseline §5 vulnerabilities | Dependabot, `npm audit`, `SECURITY.md`, upstream-change issue form. Met. |
+| security-api §1 BOLA | Example, `docs/security.md` checklist, PR template checklist and the `mcp-tools.md` agent rule. Residual risk owned by each server's engineer (concern 8, resolved). |
+| security-api §2 authentication | Section 3: template-owned `jose` guard with a dedicated negative-case test suite (concern 3, resolved). Met. |
+| security-api §3 BOPLA | Tool schemas are Zod objects; the example uses `.strict()` and returns only needed fields. Checklist item. |
+| security-api §4 resource consumption | Rate limiting at the required gateway (concern 1, resolved). Server adds body limit, timeouts, round limits and replica cap. Met in production. |
+| security-api §5 BFLA | `@ToolScopes` / `@ToolRoles`, tools protected by default, and a CI test that every handler carries an explicit access decorator (concern 8). Met. |
+| security-api §6 business flows | Engineer-owned. Checklist item. |
+| security-api §7 SSRF | Only outbound call is the configured JWKS. Engineer fetches: checklist item (allowlist, recheck redirects). |
+| security-api §8 misconfiguration | Generic errors in production, no CORS, Origin allowlist, no stack traces. Met. |
+| security-api §9 inventory | One endpoint, one protocol era, documented interfaces. Met. |
+| security-api §10 third-party APIs | Engineer-owned. Checklist item. |
+| security-mcp §1 tokens | Per-user tokens, no shared credentials, no passthrough. Met. |
+| security-mcp §2 scope creep | Lifetime cap; scope review is IdP config. Checklist item. |
+| security-mcp §3 tool poisoning | Static tool definitions reviewed in PRs; no dynamic registration. Met for the server side. |
+| security-mcp §4 supply chain | As baseline §2. `.mcp.json` names only the local build. |
+| security-mcp §5 command injection | No shell-outs in the template. The edit hook runs fixed commands with no interpolated input. Checklist item and `mcp-tools.md` rule: argument arrays only. |
+| security-mcp §6 prompt injection via outputs | Checklist item: delimit third-party content in tool results. |
+| security-mcp §7 authn/authz | Sections 3 and 4. Met. |
+| security-mcp §8 audit | Per-call spans and metrics, attributable through the keyed pseudonym (concern 4, resolved). Met. |
+| security-mcp §9 shadow servers | Name and version in discovery and telemetry; `docs/gateway.md` asks for gateway inventory registration. Met. |
+| security-mcp §10 over-sharing | Server-side: private cache scope, per-user Redis keys. Client-side trifecta is out of the server's control. |
+| compliance-gdpr | Template is neither controller nor processor; each deployer is the controller. Privacy by default (section 7), `docs/privacy.md`, retention default. Pseudonymised identity is still personal data, so `docs/privacy.md` names the lawful basis deployers need (concern 4, resolved). |
+| compliance-eu-ai-act | The template is not an AI system. Servers built from it sit in an agent's action layer (§3), so a deployer whose agent is high-risk inherits logging and cybersecurity duties. The per-call telemetry supports those. No obligations on the template itself. |
+| brand-personal | Voice in docs, errors and agent instructions; kebab-case repo and skill names; SCREAMING_SNAKE_CASE env vars; changelog format. npm script colons and the `AGENTS.md`/`CLAUDE.md` file names are ecosystem overrides. No visual identity needed: no UI. |
+| ux-personal §4 | Config errors name the key and the fix; JSON-RPC errors carry a code and message; zero-config stdio start; runnable examples; SemVer for breaking changes. No UI, so §2 and §3 don't apply. |
+
+### 14. ADRs to write during Build
+
+Recorded in `docs/adr/` (MADR format): 0001–0006 are the decisions listed on issue #4; 0007 and 0008 were added during design. The decision in each is the one this spec proposes.
+
+| ADR | Decision |
+| --- | --- |
+| 0001 | `src/platform` vs `src/app` split with one seam (section 1) |
+| 0002 | One generic token guard plus `AUTH_PROVIDER` claim presets and claim-path overrides, not one module per provider (section 3) |
+| 0003 | Validate every token in the server, even behind a gateway (section 3) |
+| 0004 | Zod env schema via `@nestjs/config`; transport by entry point; auth by `AUTH_MODE` (sections 2, 6) |
+| 0005 | `nestjs-pino`, OTel Node SDK with vendor-neutral OTLP (protocol by env var), HMAC pseudonyms; reference deployment routes through a self-run OpenTelemetry Collector rather than the managed agent (sections 7, 10) |
+| 0006 | One reusable module plus a reference environment; internal ingress in a VNet-integrated environment by default (section 10) |
+| 0007 | `AGENTS.md` as the source with `CLAUDE.md` importing it; `template-` prefixed skills and path-scoped rules; `.mcp.json` limited to the local build (section 12) |
+| 0008 | Biome as the single linter and formatter; nursery `noFloatingPromises` at `error` with revisit triggers (section 9) |
+
+## Open questions resolved
+
+The intent had no open questions. Questions that came up during design:
+
+| Question | Resolution |
+| --- | --- |
+| Does MCP-Nest serve modern-only? | Yes. Default is dual-era; `protocol: 'modern-only'` on HTTP and `legacy: 'reject'` on stdio give modern-only. |
+| Express or Fastify? | Express. Default for Nest and simplest for `resolveUser`. |
+| How do CI smoke tests authenticate without secrets? | A local test JWKS stub and minted tokens, exercising the real guard. |
+| How is stdio kept out of deployments? | Separate entry point; the container only runs the HTTP entry; stdio refuses `NODE_ENV=production`. |
+| How do multi-round requests stay stateless across replicas? | Shared HMAC key for `requestState`. |
+| Test runner? | Jest, the Nest default. |
+
+Build-time checks (all resolved 2026-10-15):
+
+1. ~~**Inspector protocol pinning.**~~ Checked 2026-10-15 against Inspector 2.11.0: the config's per-server `"protocolEra": "modern"` pins the modern era, and the default is `legacy`, so it must be set. Section 9 updated.
+2. ~~**Inspector CLI headers.**~~ Checked 2026-10-15: the CLI takes `--header 'Authorization: Bearer <token>'` and exits `3` when a server needs auth, which gives the negative tests a clean assertion. No fallback client needed. Section 9 updated.
+3. ~~**Entra ID client registration.**~~ Checked 2026-10-14: Entra supports neither DCR nor CIMD, with no announced plans. Resolved under concern 5. Recheck Auth0 and Keycloak support when writing the provider matrix.
+4. ~~**Agent file formats.**~~ Checked 2026-10-15: rules use `paths:` YAML frontmatter with globs; `@AGENTS.md` imports are supported and are the only form that works in every session; Copilot's coding agent reads `AGENTS.md`. One fix: the hook must exit `2` for Claude to see a failure, so it runs a small Node script rather than `npm` directly. Section 12 updated.
+5. ~~**Container Apps managed OpenTelemetry agent.**~~ Checked 2026-10-15: GA, but its Application Insights destination accepts traces and logs only, not metrics; gRPC only; single fixed replica; Terraform support documented only through AzAPI. **Decided (Joseph Searle): run an OpenTelemetry Collector as its own container app** exporting all signals to Application Insights, and have the server honour `OTEL_EXPORTER_OTLP_PROTOCOL` rather than hard-coding HTTP. Sections 7 and 10 updated.
+6. ~~**Biome rule coverage.**~~ Checked 2026-10-15: `noFloatingPromises` exists since Biome 2.0 but is a nursery rule using Biome's own type inference, with default severity "information". **Decided (Joseph Searle): Biome only, rule enabled at `error`**, exact pin, `tsc` strict and tests as backstop, revisit triggers recorded. Section 9 updated.
+
+All build-time checks are resolved.
+
+## Areas of concern
+
+Joseph Searle owns every policy area for this personal project. All ten concerns were resolved on 2026-10-14 and 2026-10-15; each decision is recorded under its concern.
+
+1. **security-api §4 (resource consumption) vs intent constraint "no rate limiting in the server".** A server without a gateway, including the reference Container Apps deployment, has no rate limit. The design caps body size, request time, multi-round rounds and replica count, which bounds cost but not abuse. Options: (a) accept and state in `docs/gateway.md` and the Terraform README that production needs a gateway; (b) add an opt-in in-process limiter, off by default; (c) make the reference deployment internal-only.
+   **Resolved 2026-10-14 (Joseph Searle): (a), as a hard requirement.** Every production deployment sits behind an MCP gateway, the same as a production API. The gateway owns rate limiting, and stateless servers scale horizontally behind it. No in-process limiter, not even opt-in: engineers should never have to build or tune one. Section 4, section 10 and FR-18 updated.
+
+2. **security-baseline §2 / security-mcp §4 (supply chain): beta dependencies.** `@rekog/mcp-nest` 2.0.8 peers on `@modelcontextprotocol/core`, `/node` and `/server` `^2.0.0-beta.5`. A "production-ready" v1 would rest on a beta SDK. `@rekog/mcp-nest-auth` is also marked Beta, though only `dev` mode uses it. Options: (a) ship v1 on exact-pinned betas, label it in the README, and track SDK GA with an Upstream change issue; (b) hold the v1 tag until SDK v2 is GA.
+   **Resolved 2026-10-14 (Joseph Searle): (b).** Build on exact-pinned betas and release `0.x` pre-releases, labelled as built on a beta SDK. Tag `1.0.0` only once MCP TypeScript SDK v2 is GA and `@rekog/mcp-nest` has released against it. No stability claim the upstream can't back. Section 9 updated.
+
+3. **Intent constraint "OAuth through MCP-Nest's own support" vs security-api §2 / security-mcp §7.** MCP-Nest's own auth (`McpAuthModule`) is an authorization server. For external issuers it ships no resource-server guard; its examples hand-roll one. Meeting "validate every token" therefore needs a template-owned guard of about 100 lines on `jose`, which is security-critical code the template now maintains. Options: (a) template-owned `jose` guard (proposed, section 3); (b) a third-party middleware such as `express-oauth2-jwt-bearer`, mapped via `resolveUser`. Both depart from "MCP-Nest's own support" for production; the intent wording needs confirming.
+   **Resolved 2026-10-14 (Joseph Searle): (a).** A template-owned guard on `jose`, attached to the `/mcp` controller, which is the guard pattern MCP-Nest's own docs use. Option (b) would still leave glue code for the lifetime cap, claim mapping and MCP `WWW-Authenticate`, so (a) keeps everything in one place under one test suite. The intent wording stands as a clarification, not a contradiction: MCP-Nest supplies authorization (`@ToolScopes`, `@ToolRoles`, `resolveUser`, per-caller `tools/list`), and the template adds only the token check MCP-Nest leaves to the app. Clarified in the intent under concern 10. Section 3 updated with the guard's test suite.
+
+4. **security-mcp §1 and §8 (attributable audit) vs compliance-gdpr §1 (data minimisation) and security-baseline §4.** Audit needs to tie each call to a person; GDPR and the baseline want no personal data in telemetry without reason. Proposed default: HMAC pseudonym of `sub`, no raw identifiers, no client IP, 30-day retention. A keyed pseudonym is still personal data under UK/EU GDPR, so deployers need a lawful basis (likely legitimate interests: security monitoring) and a record of processing; `docs/privacy.md` says so. Decide whether the default is pseudonym, raw `sub` behind a flag, or nothing.
+   **Resolved 2026-10-14 (Joseph Searle): pseudonym only.** No setting to record raw `sub`, so no engineer has to decide whether to weaken privacy. Raw identity is ruled out because it fails minimisation; no identity is ruled out because it fails attribution. Hash lookups happen in a restricted context with the key in Key Vault, and the key outlives the retention period. Section 7 updated.
+
+5. **Intent (Entra ID as default provider) vs MCP client registration.** Entra ID does not offer Dynamic Client Registration, and its support for Client ID Metadata Documents is unconfirmed. MCP clients may then need a pre-registered client ID, or a gateway that brokers registration. The template's token validation is unaffected; the zero-configuration client experience is. Decide whether Entra stays the documented default or Auth0/Keycloak lead the docs with Entra marked "pre-registered clients only".
+   **Resolved 2026-10-14 (Joseph Searle): Entra stays the lead worked example, plus a provider matrix.** Checked: Entra supports neither DCR nor CIMD, with no announced plans. Because a gateway is required in production (concern 1), gateway-brokered registration (as agentgateway does for Entra) is always available there, so the gap is gateway configuration, not a template problem. `docs/auth/entra-id.md` covers pre-authorized clients, admin-registered clients and gateway brokering; `docs/auth/overview.md` carries the matrix. `AUTH_PROVIDER` defaults to `generic`. Section 3 updated.
+
+6. **security-baseline §3 (exposure is a deliberate decision).** The reference deployment needs a reachable endpoint to be useful, but no gateway ships with it. `external_ingress` is a required variable with no default, so the decision is explicit per deployment. Confirm this is enough, or default to internal ingress.
+   **Resolved 2026-10-14 (Joseph Searle): internal by default.** With a gateway required in production (concern 1), only the gateway should be public, so internal ingress is the deployment's default shape. Terraform adds a VNet-integrated environment so gateways in the VNet can reach the server. `external_ingress = true` is a demo-only opt-in with a warning. IP-restricted external ingress for gateways outside Azure is documented, not built. Section 10 updated.
+
+7. **Intent constraint "no new abstractions" vs FR-6.** The `AUTH_PROVIDER` claim map is a small abstraction. Without it, each provider doc would tell engineers to edit guard code in `src/platform/`, which breaks the upgrade path in section 1. Proposed: keep the map.
+   **Resolved 2026-10-14 (Joseph Searle): presets plus overrides.** Keep the `AUTH_PROVIDER` presets and add `AUTH_SCOPES_CLAIM` and `AUTH_ROLES_CLAIM` for any other issuer (Okta, a corporate IdP, custom claims). This is config, not a new abstraction, and engineers never edit template-owned auth code to change provider. Sections 3 and 6 updated.
+
+8. **security-api §1 (BOLA) and §3 (BOPLA): engineer-owned.** The template can't enforce object- or property-level checks in tools it hasn't seen. Mitigated by the example tool, the `docs/security.md` checklist and the `mcp-tools.md` rule, which puts the checklist in front of coding agents as they write tools. Accept as residual risk owned by each server's engineer.
+   **Resolved 2026-10-14 (Joseph Searle): add cheap enforcement.** A platform test fails CI when any tool lacks an explicit `@ToolScopes`, `@ToolRoles` or `@PublicTool`, so no tool ships without a deliberate access decision. MCP-Nest 2.0.8 only authorizes tools, so resources and prompts returning per-user data check ownership themselves (documented). The PR template gains a tool-review checklist. Object- and property-level checks stay with each server's engineer as accepted residual risk; no `assertOwner()` helper. Section 3 updated.
+
+9. **security-baseline §2 / security-mcp §3 (agent files are a shipped dependency).** `AGENTS.md`, `.claude/rules/`, skills, hooks and `.mcp.json` are instructions and commands that coding agents act on in every server created from the template. A careless or compromised template release could change them, much like a tool-definition rug pull: engineers merging a release would pick up new agent behaviour, or a hook that runs new commands, without noticing. Proposed: list every agent-file change in its own changelog subsection, have `template-upgrade` show the diff of `.claude/`, `AGENTS.md` and `.mcp.json` and ask before accepting it, and keep hooks to fixed commands. Decide whether that is enough or whether hooks should be left out of the template entirely.
+   **Resolved 2026-10-14 (Joseph Searle): visible and gated, plus a CI check.** Each release lists agent-file changes in an `### Agent files` changelog subsection; `template-upgrade` shows the diff of `.claude/`, `AGENTS.md`, `CLAUDE.md` and `.mcp.json` separately and asks before accepting it; the hook stays fixed commands with nothing interpolated. The template repo's `agent-files.yml` workflow fails a PR that changes agent files without that changelog entry, so the disclosure can't be skipped. Hooks stay. Section 9 updated.
+
+10. **Scope beyond the accepted intent.** The intent doesn't mention coding-agent tooling; FR-19 and section 12 were added by the product owner during design. It doesn't contradict any constraint, but it is new scope. Options: (a) accept it at spec level and note it on epic #5; (b) amend `intent.md` in this PR so intent and spec agree. Proposed: (b), a one-line addition to Proposed outcome.
+   Design decisions widened the gap to three points: agent tooling (FR-19), a gateway required in production (concern 1), and where MCP-Nest's auth support ends (concern 3). Release gating (concern 2) and Biome are spec-level detail and leave the intent unchanged.
+   **Resolved 2026-10-15 (Joseph Searle): (b).** `intent.md` amended in this PR: a Coding-agent guidance bullet, "required for production" in the Gateway bullet, and the auth clarification. An amendment note and an `amended` date in its frontmatter record the change. Merging this PR re-accepts intent and spec together. The intent change counts as design-stage drift in the stage metrics, which is accurate: the scope did grow during design.
