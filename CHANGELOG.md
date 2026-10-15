@@ -14,6 +14,7 @@ Changes to coding-agent files (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`
 - Jest unit tests, strict TypeScript and the `dev`, `build`, `start`, `lint`, `format`, `typecheck` and `test` scripts.
 - Node 22.19 or newer, set in `engines` and `.nvmrc`.
 - ADR-0001 (platform/app split) and ADR-0008 (Biome).
+- Apache-2.0 licence.
 
 ### Fixed
 

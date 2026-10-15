@@ -2,6 +2,7 @@
 	"name": "nestjs-mcp-server-template",
 	"version": "0.0.0",
 	"private": true,
+	"license": "Apache-2.0",
 	"description": "Template for production MCP servers on NestJS and @rekog/mcp-nest.",
 	"engines": {
 		"node": ">=22.19.0"
