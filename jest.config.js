@@ -3,6 +3,7 @@ module.exports = {
 	testEnvironment: "node",
 	roots: ["<rootDir>/test"],
 	testRegex: ".*\\.spec\\.ts$",
+	setupFiles: ["<rootDir>/test/support/preload-nest.mjs"],
 	extensionsToTreatAsEsm: [".ts"],
 	transform: {
 		"^.+\\.ts$": [
