@@ -47,7 +47,7 @@ Library facts are checked against `@rekog/mcp-nest` 2.0.8 and its docs as of 202
 | FR-16 | A Terraform reference deployment on Azure Container Apps. | Intent: deployment |
 | FR-17 | Tagged releases with a changelog. | Intent: releases |
 | FR-18 | A gateway expectations document. A gateway is required for production; none is set up or recommended. | Intent: gateway; concern 1 |
-| FR-19 | Coding-agent guidance ships with the template: `AGENTS.md` for any agent, plus Claude Code settings, path-scoped rules, skills and a project MCP config. | Product owner, 2026-10-14 |
+| FR-19 | Coding-agent guidance ships with the template: `AGENTS.md` for any agent, plus Claude Code settings, path-scoped rules, skills and a project MCP config. | Intent (amended under concern 10) |
 
 ### Non-functional
 
@@ -420,7 +420,7 @@ Carried forward, to verify at the start of Build:
 
 ## Areas of concern
 
-Joseph Searle owns every policy area for this personal project. Each item needs a decision before this spec is accepted.
+Joseph Searle owns every policy area for this personal project. All ten concerns were resolved on 2026-10-14 and 2026-10-15; each decision is recorded under its concern.
 
 1. **security-api §4 (resource consumption) vs intent constraint "no rate limiting in the server".** A server without a gateway, including the reference Container Apps deployment, has no rate limit. The design caps body size, request time, multi-round rounds and replica count, which bounds cost but not abuse. Options: (a) accept and state in `docs/gateway.md` and the Terraform README that production needs a gateway; (b) add an opt-in in-process limiter, off by default; (c) make the reference deployment internal-only.
    **Resolved 2026-10-14 (Joseph Searle): (a), as a hard requirement.** Every production deployment sits behind an MCP gateway, the same as a production API. The gateway owns rate limiting, and stateless servers scale horizontally behind it. No in-process limiter, not even opt-in: engineers should never have to build or tune one. Section 4, section 10 and FR-18 updated.
@@ -450,3 +450,5 @@ Joseph Searle owns every policy area for this personal project. Each item needs 
    **Resolved 2026-10-14 (Joseph Searle): visible and gated, plus a CI check.** Each release lists agent-file changes in an `### Agent files` changelog subsection; `template-upgrade` shows the diff of `.claude/`, `AGENTS.md`, `CLAUDE.md` and `.mcp.json` separately and asks before accepting it; the hook stays fixed commands with nothing interpolated. The template repo's `agent-files.yml` workflow fails a PR that changes agent files without that changelog entry, so the disclosure can't be skipped. Hooks stay. Section 9 updated.
 
 10. **Scope beyond the accepted intent.** The intent doesn't mention coding-agent tooling; FR-19 and section 12 were added by the product owner during design. It doesn't contradict any constraint, but it is new scope. Options: (a) accept it at spec level and note it on epic #5; (b) amend `intent.md` in this PR so intent and spec agree. Proposed: (b), a one-line addition to Proposed outcome.
+   Design decisions widened the gap to three points: agent tooling (FR-19), a gateway required in production (concern 1), and where MCP-Nest's auth support ends (concern 3). Release gating (concern 2) and Biome are spec-level detail and leave the intent unchanged.
+   **Resolved 2026-10-15 (Joseph Searle): (b).** `intent.md` amended in this PR: a Coding-agent guidance bullet, "required for production" in the Gateway bullet, and the auth clarification. An amendment note and an `amended` date in its frontmatter record the change. Merging this PR re-accepts intent and spec together. The intent change counts as design-stage drift in the stage metrics, which is accurate: the scope did grow during design.

@@ -2,8 +2,12 @@
 author: Joseph Searle
 status: accepted
 linked_issue: https://github.com/JosephSearle/nestjs-mcp-server-template/issues/2
+linked_epic: https://github.com/JosephSearle/nestjs-mcp-server-template/issues/5
 created: 2026-10-14
+amended: 2026-10-15
 ---
+
+> **Amended during design (spec #4, concern 10).** Accepted in #3, then amended in the spec PR so intent and spec agree. Three changes: the gateway is required in production, the auth wording now says where MCP-Nest's support ends, and coding-agent guidance is added to scope. Merging the spec PR re-accepts this intent.
 
 # Intent: Production-ready NestJS MCP server template
 
@@ -16,12 +20,13 @@ A GitHub template repository that engineers create new MCP servers from. It lean
 - **Template repository**: engineers create a server with GitHub's "Use this template" and follow a short setup guide. Everything lives in the repo, so engineers can change any part of it.
 - **Transport**: Streamable HTTP for deployed servers; stdio for local development and testing only.
 - **Protocol**: modern MCP (2026-07-28) only.
-- **Auth**: OAuth through MCP-Nest's own auth support. The template shows how to configure the common strategies (an external provider such as Entra ID, Auth0 or Keycloak) and uses MCP-Nest's built-in authorization server for local development and demos only. Servers validate every token themselves (issuer, audience, expiry, scopes), even behind a gateway.
-- **Gateway**: usable behind any MCP gateway. The template documents what it expects from one (identity forwarding, trace propagation) but doesn't recommend or ship setup for a specific gateway. Rate limiting is the gateway's job, not the server's.
+- **Auth**: OAuth through MCP-Nest's own auth support for authorization (per-tool scopes and roles). MCP-Nest leaves token validation for external providers to the app, so the template adds that check. The template shows how to configure the common strategies (an external provider such as Entra ID, Auth0 or Keycloak) and uses MCP-Nest's built-in authorization server for local development and demos only. Servers validate every token themselves (issuer, audience, expiry, scopes), even behind a gateway.
+- **Gateway**: usable behind any MCP gateway, and a gateway is required for production. The template documents what it expects from one (identity forwarding, trace propagation) but doesn't recommend or ship setup for a specific gateway. Rate limiting is the gateway's job, not the server's.
 - **State**: stateless by default. The template documents how to keep application state that must survive between requests, with Redis as the worked example.
 - **Production setup**: OpenTelemetry tracing and metrics, structured logging, health and readiness checks, graceful shutdown, config validated at startup.
 - **MCP Inspector built in**: npm scripts for the web UI against stdio and local HTTP, a committed Inspector config pinned to the modern protocol era, and Inspector CLI smoke tests in CI.
 - **Deployment IaC** in Terraform for a reference deployment on Azure Container Apps.
+- **Coding-agent guidance**: `AGENTS.md` for any coding agent, plus Claude Code settings, rules, skills and a project MCP config, so agents follow the template's conventions when building on it.
 - **Releases**: the template is versioned with tagged releases and a changelog, so engineers can see what changed since they created their server.
 
 v1 is done when:
