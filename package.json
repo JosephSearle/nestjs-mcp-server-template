@@ -9,8 +9,8 @@
 	},
 	"scripts": {
 		"build": "nest build",
-		"start": "node dist/main.js",
-		"dev": "nest start --watch",
+		"start": "node --import ./dist/platform/telemetry/instrumentation.js dist/main.js",
+		"dev": "nest start --watch --exec \"node --import ./dist/platform/telemetry/instrumentation.js\"",
 		"dev:stdio": "nest start --watch --entryFile main.stdio",
 		"lint": "biome check .",
 		"format": "biome format --write .",

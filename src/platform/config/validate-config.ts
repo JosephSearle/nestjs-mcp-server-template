@@ -115,7 +115,7 @@ function isLocalUrl(value: unknown): boolean {
 	return LOCAL_HOSTS.has(new URL(value).hostname);
 }
 
-function readPackageJson(): { name?: string; version?: string } {
+export function readPackageJson(): { name?: string; version?: string } {
 	try {
 		return JSON.parse(
 			readFileSync(join(process.cwd(), "package.json"), "utf8"),
