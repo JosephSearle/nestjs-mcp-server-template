@@ -28,4 +28,4 @@ Changes to coding-agent files (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`
 
 ### Agent files
 
-- None.
+- Added `.claude/settings.json` with a `PostToolUse` hook that runs `.claude/hooks/biome-check.mjs` after Claude Code writes or edits a file. It runs `biome check` on that file only, with fixed arguments and no shell, and reports failures back to Claude.
