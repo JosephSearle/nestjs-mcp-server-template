@@ -1,5 +1,5 @@
 ---
-status: review
+status: accepted
 linked_intent: docs/sdlc/5-nestjs-mcp-server-template/intent.md
 linked_issue: https://github.com/JosephSearle/nestjs-mcp-server-template/issues/4
 linked_epic: https://github.com/JosephSearle/nestjs-mcp-server-template/issues/5
@@ -81,6 +81,7 @@ src/
     tools/example.tools.ts     # One scoped tool, one tool showing an ownership check
     resources/example.resources.ts
     prompts/example.prompts.ts
+    scopes.ts                  # BASE_SCOPE and the server's other scope names
 test/
   platform/                    # Template tests
   app/                         # Engineer tests, starting with the examples
@@ -139,13 +140,15 @@ Two modes, set by `AUTH_MODE`:
 - **Entra ID is the lead worked example** (concern 5); `AUTH_PROVIDER` still defaults to `generic`, so the code assumes no provider. Entra supports neither Dynamic Client Registration nor Client ID Metadata Documents, so `docs/auth/entra-id.md` covers the three ways an MCP client gets a client ID: pre-authorized well-known clients (for example VS Code), an admin-registered client, and gateway-brokered registration, which is the production path since a gateway is required (section 4).
 - `docs/auth/overview.md` has a provider matrix: Dynamic Client Registration, Client ID Metadata Documents and pre-registered clients, for Entra ID, Auth0 and Keycloak, so the registration gap is visible before anyone picks a provider.
 
-**`dev`.** Wires `@rekog/mcp-nest-auth` (`McpAuthModule`) so the server runs its own authorization server, delegating login to GitHub or Google. Startup fails when `NODE_ENV=production` or `MCP_PUBLIC_URL` isn't a `localhost` URL. Documented in `docs/auth/local-dev.md`. `mcpVersionsSupported` is narrowed to `['2026-07-28']`.
+**`dev`.** Wires `@rekog/mcp-nest-auth` (`McpAuthModule`) so the server runs its own authorization server, delegating login to GitHub or Google. Startup fails when `NODE_ENV=production` or `MCP_PUBLIC_URL` isn't a `localhost` URL. Documented in `docs/auth/local-dev.md`. `mcpVersionsSupported` is narrowed to `['2026-07-28']`. Configured by the `DEV_AUTH_*` variables (section 6), with the in-memory store and `cookie-parser`, which `McpAuthModule` requires. `@rekog/mcp-nest-auth` and `cookie-parser` are dev dependencies loaded only in this mode, so they never reach the production image.
 
 **stdio** has no HTTP request and no token. It's a local process the developer starts, so it runs without auth. This is why stdio is never deployed.
 
 **Per-tool authorization.** No `allowUnauthenticatedAccess`. Every caller must be authenticated, whatever decorators a tool has. `@PublicTool()` is not used anywhere in the template, and `docs/security.md` says when it's acceptable.
 
-**Explicit access decision on every tool** (concern 8). A platform test in `test/platform/` discovers every `@Tool` handler and fails CI if it has none of `@ToolScopes`, `@ToolRoles` or `@PublicTool`. The failure names the class and handler and says which decorators satisfy it. A tool open to any authenticated caller states that with `@ToolScopes` naming the server's base scope.
+**Explicit access decision on every tool** (concern 8). A platform test in `test/platform/` discovers every `@Tool` handler and fails CI if it has none of `@ToolScopes`, `@ToolRoles` or `@PublicTool`. The failure names the class and handler and says which decorators satisfy it. A tool open to any authenticated caller states that with `@ToolScopes([BASE_SCOPE])`.
+
+**Scope names** live in `src/app/scopes.ts` (engineer-owned), which exports `BASE_SCOPE` (default `mcp:access`, renamed per server) and the server's other scopes. `app.module.ts` re-exports them, so the seam stays one file. The protected-resource metadata builds `scopes_supported` from this list, and `docs/auth/<provider>.md` shows how to register the same scope names with each issuer. Setting `AUTH_REQUIRED_SCOPES` to `BASE_SCOPE`'s value also makes it a gate at the door, which is the recommended production setting.
 
 MCP-Nest 2.0.8 applies these decorators to tools only. Resources and prompts get the token check from the guard and nothing finer. So a resource or prompt that returns per-user data must check ownership itself, and `docs/security.md` and `mcp-tools.md` say so. If MCP-Nest adds per-resource or per-prompt authorization, extend the test to cover them.
 
@@ -211,6 +214,9 @@ A gateway must:
 | `AUTH_REQUIRED_SCOPES` | unset | |
 | `AUTH_CLOCK_TOLERANCE_SECONDS` | `30` | |
 | `AUTH_MAX_TOKEN_LIFETIME_SECONDS` | `5400` | |
+| `DEV_AUTH_PROVIDER` | `github` | `github` or `google`. `AUTH_MODE=dev` only |
+| `DEV_AUTH_CLIENT_ID`, `DEV_AUTH_CLIENT_SECRET` | — | OAuth app for local login. Required for `AUTH_MODE=dev` |
+| `DEV_AUTH_JWT_SECRET` | random per process | Signs the built-in server's tokens. `AUTH_MODE=dev` only |
 | `LOG_LEVEL` | `info` | |
 | `LOG_PSEUDONYM_KEY` | random per process in development | Required in production. See section 7 |
 | `TRUST_PROXY_HOPS` | `0` | |
@@ -270,13 +276,13 @@ The HTTP server in development starts without `AUTH_ISSUER` only if `AUTH_MODE=d
 - `.github/dependabot.yml`: `npm`, `github-actions`, `docker`, `terraform`, weekly, minor and patch grouped.
 - `release.yml` on `v*` tags: runs CI, then creates a GitHub Release from that version's `CHANGELOG.md` section (`contents: write`).
 - `agent-files.yml` (template repo only; removed by `docs/setup.md` in new servers): on pull requests, fails when `.claude/`, `AGENTS.md`, `CLAUDE.md` or `.mcp.json` change without an entry under the `### Agent files` subsection of the `Unreleased` changelog section (concern 9).
+- `deploy.yml`: `workflow_dispatch` only. Azure login with OIDC federated credentials, image build and push, `terraform apply`. Skips with a message when its repo variables are unset, so it never fails a fresh repo.
 
 **Tooling.** Biome is the single linter and formatter, configured in `biome.json`, exact-pinned like other dev dependencies. No ESLint or Prettier.
 
 - `noFloatingPromises` (nursery, `types` domain) is enabled at `error`, so un-awaited promises in tools, the guard and shutdown fail CI. Nursery rules can change between releases, which the exact pin contains; Dependabot bumps to Biome are reviewed for rule changes.
 - Biome's type inference is its own, not the TypeScript compiler's, so it may miss cases typescript-eslint would catch. `tsc` runs with `strict` and the tests are the backstop.
 - Revisit, by adding a minimal typescript-eslint step for promise rules only, if a floating-promise bug ships, or once the rule leaves the nursery and its coverage is documented. Recorded in ADR-0008.
-- `deploy.yml`: `workflow_dispatch` only. Azure login with OIDC federated credentials, image build and push, `terraform apply`. Skips with a message when its repo variables are unset, so it never fails a fresh repo.
 
 **Releases.** SemVer for the template. Until MCP TypeScript SDK v2 is GA and `@rekog/mcp-nest` has released against it, releases are `0.x` pre-releases and the README says the template is built on a beta SDK. `1.0.0` is tagged only after both, and only once the v1 done criteria in the intent are met (concern 2). From `1.0.0`, a breaking change to env vars, endpoint paths, the `app.module.ts` seam or npm script names is a major release. `CHANGELOG.md` follows Keep a Changelog, newest first, grouped Added/Changed/Fixed/Removed. `docs/setup.md` tells engineers to start their own changelog and keep a note of the template version they came from.
 
@@ -366,7 +372,7 @@ The guidance is written for engineers building servers from the template, not fo
 | Policy | Outcome |
 | --- | --- |
 | security-baseline §1 secrets | Key Vault references and env injection; `.env` git-ignored; `.env.example` has no values; agents denied reading `.env*`, state and real `tfvars` (section 12). Met. |
-| security-baseline §2 dependencies | Exact pins, lockfile, Dependabot, CodeQL. Beta upstream: `0.x` until SDK v2 GA (concern 2, resolved). Agent files as a shipped dependency: concern 9. |
+| security-baseline §2 dependencies | Exact pins, lockfile, Dependabot, CodeQL. Beta upstream: `0.x` until SDK v2 GA (concern 2, resolved). Agent files as a shipped dependency: changelog disclosure, gated upgrades and a CI check (concern 9, resolved). Met. |
 | security-baseline §3 exposure | Health endpoints minimal; ingress internal by default, public only as an explicit demo opt-in (concern 6, resolved). Met. |
 | security-baseline §4 data handling | Redaction and pseudonym-only identity (section 7; concern 4, resolved). Met. |
 | security-baseline §5 vulnerabilities | Dependabot, `npm audit`, `SECURITY.md`, upstream-change issue form. Met. |

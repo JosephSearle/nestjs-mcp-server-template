@@ -7,7 +7,7 @@ created: 2026-10-14
 amended: 2026-10-15
 ---
 
-> **Amended during design (spec #4, concern 10).** Accepted in #3, then amended in the spec PR so intent and spec agree. Three changes: the gateway is required in production, the auth wording now says where MCP-Nest's support ends, and coding-agent guidance is added to scope. Merging the spec PR re-accepts this intent.
+> **Amended during design (spec #4, concern 10).** Accepted in #3, then amended in the spec PR so intent and spec agree. Three changes: the gateway is required in production (Gateway, Constraints and Affected systems), the auth wording now says where MCP-Nest's support ends, and coding-agent guidance is added to scope. Merging the spec PR re-accepts this intent.
 
 # Intent: Production-ready NestJS MCP server template
 
@@ -35,14 +35,14 @@ v1 is done when:
 
 ## Affected users and systems
 - **Users**: engineers building production MCP servers from the template; the MCP clients (e.g. Claude) and agents that consume those servers, directly or through a gateway.
-- **Systems**: GitHub (template repo, CI, releases); OAuth providers (Entra ID by default); an MCP gateway, if one is used; hosting (Azure Container Apps for the reference deployment, not mandated); the telemetry backend that receives OpenTelemetry data; Redis or another store when a server needs application state.
+- **Systems**: GitHub (template repo, CI, releases); OAuth providers (Entra ID by default); an MCP gateway (required in production; any product); hosting (Azure Container Apps for the reference deployment, not mandated); the telemetry backend that receives OpenTelemetry data; Redis or another store when a server needs application state.
 
 ## Constraints
 - Lean on `@rekog/mcp-nest` v2 (2.0.0 or later) directly. No wrapper and no separate package to maintain. v2 targets the 2026-07-28 revision through MCP TypeScript SDK v2 and supports multi-round tool requests for elicitation, sampling and roots.
 - Don't over-engineer: prefer configuration, examples and docs over new abstractions.
 - No rate limiting in the server. It belongs at the MCP gateway.
 - Modern MCP (2026-07-28) only — no legacy session support and no legacy toggle.
-- Agnostic by design: no specific gateway is required or recommended, and the OAuth provider, hosting and state store are recommendations, not mandates.
+- Agnostic by design: a gateway is required for production, but no specific gateway is required or recommended, and the OAuth provider, hosting and state store are recommendations, not mandates.
 - stdio is for local development and testing only and is never deployed.
 - The Inspector requires Node 22.19 or newer, so the template targets that.
 - No scaffolding CLI. GitHub's "Use this template" is the way to create a server.
