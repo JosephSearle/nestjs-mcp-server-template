@@ -1,5 +1,5 @@
 ---
-status: draft
+status: review
 linked_intent: docs/sdlc/5-nestjs-mcp-server-template/intent.md
 linked_issue: https://github.com/JosephSearle/nestjs-mcp-server-template/issues/4
 linked_epic: https://github.com/JosephSearle/nestjs-mcp-server-template/issues/5
@@ -423,7 +423,7 @@ The intent had no open questions. Questions that came up during design:
 | How do multi-round requests stay stateless across replicas? | Shared HMAC key for `requestState`. |
 | Test runner? | Jest, the Nest default. |
 
-Carried forward, to verify at the start of Build:
+Build-time checks (all resolved 2026-10-15):
 
 1. ~~**Inspector protocol pinning.**~~ Checked 2026-10-15 against Inspector 2.11.0: the config's per-server `"protocolEra": "modern"` pins the modern era, and the default is `legacy`, so it must be set. Section 9 updated.
 2. ~~**Inspector CLI headers.**~~ Checked 2026-10-15: the CLI takes `--header 'Authorization: Bearer <token>'` and exits `3` when a server needs auth, which gives the negative tests a clean assertion. No fallback client needed. Section 9 updated.
