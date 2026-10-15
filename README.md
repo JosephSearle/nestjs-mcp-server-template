@@ -1,4 +1,4 @@
-# nestjs-mcp-server-template
+<h1 align="center">NestJS MCP Server Template</h1>
 
 > A GitHub template for production MCP servers built on NestJS and `@rekog/mcp-nest`.
 
