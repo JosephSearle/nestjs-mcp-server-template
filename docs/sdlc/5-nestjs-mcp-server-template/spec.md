@@ -92,7 +92,7 @@ docs/
   adr/0001-…0007-….md
 .claude/                       # See section 12
   settings.json
-  rules/  skills/
+  rules/  skills/  hooks/
 AGENTS.md  CLAUDE.md  .mcp.json
 inspector.config.json  biome.json
 .env.example  Dockerfile  .dockerignore  .nvmrc
@@ -258,9 +258,10 @@ The HTTP server in development starts without `AUTH_ISSUER` only if `AUTH_MODE=d
 | `inspect:http` | Inspector web UI against `http://localhost:3000/mcp` |
 | `test:smoke` | Inspector CLI against stdio and HTTP |
 
-- `@modelcontextprotocol/inspector` is an exact-pinned dev dependency.
-- `inspector.config.json` defines `local-stdio` (`node dist/main.stdio.js`) and `local-http` (`streamable-http`, `http://localhost:3000/mcp`), pinned to `2026-07-28` (see open questions).
-- **Smoke tests.** stdio: `tools/list`, call the example tool, read the example resource, get the example prompt. HTTP: same calls with a bearer token, plus one call without a token expecting 401 and one with a wrong audience expecting 401. The HTTP run starts a test JWKS stub (generated key pair, served on localhost) and mints tokens from it, so the real guard runs with no external issuer and no secrets.
+- `@modelcontextprotocol/inspector` v2 (2.11.0 or later; its `engines` is `node >=22.19.0`, which sets NFR-1) is an exact-pinned dev dependency, so CI never resolves a newer Inspector.
+- `inspector.config.json` uses the Inspector's `mcpServers` format and defines `local-stdio` (`node dist/main.stdio.js`) and `local-http` (`"type": "http"`, `http://localhost:3000/mcp`), both with `"protocolEra": "modern"`. The Inspector's default era is `legacy`, so leaving the field out would make it open with `initialize` and the server would reject it. `2026-07-28` is the only modern revision, so `modern` pins it.
+- Every script reads the committed file with `--config`, which is read-only and errors if the file is missing, rather than `--catalog`, which the Inspector writes to.
+- **Smoke tests** use the Inspector CLI with `--format json`, `jq -e` assertions and `--connect-timeout` set on every call. stdio: `initialize` probe, `tools/list`, call the example tool, read the example resource, get the example prompt. HTTP: the same calls with `--header 'Authorization: Bearer <token>'`, plus a call with no token and one with a wrong-audience token, each asserting exit code `3` (the CLI's "authentication required" code, raised on 401/403). The HTTP run starts a test JWKS stub (generated key pair, served on localhost) and mints short-lived tokens from it, so the real guard runs with no external issuer and no secrets. CI sets `MCP_STORAGE_DIR` and `MCP_INSPECTOR_OAUTH_STATE_PATH` to a scratch directory and never starts interactive OAuth.
 
 **Workflows** (`.github/workflows/`, `permissions: contents: read` unless stated, actions pinned to SHAs):
 
@@ -314,13 +315,15 @@ The guidance is written for engineers building servers from the template, not fo
 
 - `AGENTS.md` is the single source of agent guidance, readable by Claude Code, Copilot and other agents. It covers: the `platform`/`app` split and the one seam; the npm scripts and what "done" means (`lint`, `typecheck`, `test`, `test:smoke` pass); the tool-authoring rules below in summary; and where the docs live. It ends with an `## Engineer notes` section that template releases never edit.
 - `CLAUDE.md` imports it with `@AGENTS.md` and adds only Claude Code specifics: that path rules live in `.claude/rules/` and which skills exist. No guidance is duplicated between the two files.
+- The import is required, not belt and braces: Claude Code reads `AGENTS.md` natively only when no `CLAUDE.md` exists, and some sessions can't read it natively at all. The import works in every session and every Claude Code version, and an engineer adding a `CLAUDE.local.md` doesn't stop `AGENTS.md` loading.
+- GitHub Copilot's coding agent reads `AGENTS.md` directly.
 
 **`.claude/settings.json`** (kept small, since template and engineers both edit it):
 
 - `permissions.allow`: the npm scripts in section 9 and read-only `git` commands.
 - `permissions.ask`: edits to `src/platform/**`, `.github/**` and `infra/**`.
 - `permissions.deny`: reading `.env` and `.env.*` (except `.env.example`), `infra/**/*.tfstate*` and `infra/**/*.tfvars` (except `*.tfvars.example`).
-- One `PostToolUse` hook after edits to `src/**`: runs `npm run lint` (Biome) and `npm run typecheck` on fixed arguments, with no file paths or tool input interpolated into the command.
+- One `PostToolUse` hook after edits to `src/**`. It runs `.claude/hooks/post-edit-check.mjs` in exec form (`"command": "node"`, `"args"` holding the script path, so no shell). Two handlers with `if: "Edit(src/**)"` and `if: "Write(src/**)"`, since `if` holds one rule. The script runs `npm run lint` (Biome) and `npm run typecheck` with fixed arguments and no tool input. On failure it writes the output to stderr and exits `2`, which is the only exit code that shows the failure to Claude; a plain non-zero exit would only show the user a notice. Node rather than a shell script, so it runs on Windows without WSL.
 - `.claude/settings.local.json` is git-ignored for personal overrides.
 
 **`.claude/rules/`**, path-scoped with `paths` frontmatter:
@@ -411,10 +414,10 @@ The intent had no open questions. Questions that came up during design:
 
 Carried forward, to verify at the start of Build:
 
-1. **Inspector protocol pinning.** Confirm `inspector.config.json` can pin `2026-07-28`. If it can't, the server's `modern-only` posture is the enforcement and the intent's "config pinned to the modern protocol" is met only indirectly.
-2. **Inspector CLI headers.** Confirm the CLI can send `Authorization` for HTTP smoke tests. Fallback: a small `@modelcontextprotocol/client` script pinned to `2026-07-28`.
+1. ~~**Inspector protocol pinning.**~~ Checked 2026-10-15 against Inspector 2.11.0: the config's per-server `"protocolEra": "modern"` pins the modern era, and the default is `legacy`, so it must be set. Section 9 updated.
+2. ~~**Inspector CLI headers.**~~ Checked 2026-10-15: the CLI takes `--header 'Authorization: Bearer <token>'` and exits `3` when a server needs auth, which gives the negative tests a clean assertion. No fallback client needed. Section 9 updated.
 3. ~~**Entra ID client registration.**~~ Checked 2026-10-14: Entra supports neither DCR nor CIMD, with no announced plans. Resolved under concern 5. Recheck Auth0 and Keycloak support when writing the provider matrix.
-4. **Agent file formats.** Confirm the `paths` frontmatter for `.claude/rules/`, the `@AGENTS.md` import and the hook schema against current Claude Code docs, and that Copilot reads `AGENTS.md`.
+4. ~~**Agent file formats.**~~ Checked 2026-10-15: rules use `paths:` YAML frontmatter with globs; `@AGENTS.md` imports are supported and are the only form that works in every session; Copilot's coding agent reads `AGENTS.md`. One fix: the hook must exit `2` for Claude to see a failure, so it runs a small Node script rather than `npm` directly. Section 12 updated.
 5. **Container Apps managed OpenTelemetry agent.** Confirm it's generally available and accepts OTLP traces and metrics for Application Insights. Fallback: an OpenTelemetry Collector sidecar.
 6. **Biome rule coverage.** Confirm Biome's type-aware rules cover floating and misused promises in async handlers, which typescript-eslint would have caught. If not, record the gap and rely on tests and `tsc` strict mode.
 
