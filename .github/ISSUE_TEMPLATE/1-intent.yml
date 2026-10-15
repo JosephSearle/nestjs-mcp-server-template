@@ -7,7 +7,8 @@ body:
     attributes:
       value: |
         Describe the problem, not the implementation. Design happens later, in a Spec issue.
-        Once accepted, this issue is captured as `docs/sdlc/<issue-number>-<slug>/intent.md` via PR.
+        File this as a sub-issue of its Epic. Once accepted, this issue is captured as
+        `docs/sdlc/<epic>-<slug>/intent.md` via PR.
 
   - type: textarea
     id: problem

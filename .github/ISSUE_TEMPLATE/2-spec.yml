@@ -6,15 +6,15 @@ body:
   - type: markdown
     attributes:
       value: |
-        Open this only after the intent PR has merged. The output is
-        `docs/sdlc/<issue-number>-<slug>/spec.md`, raised as a PR.
+        Open this as a sub-issue of the same Epic as the intent, only after the intent PR has
+        merged. The output is `docs/sdlc/<epic>-<slug>/spec.md`, raised as a PR.
 
   - type: input
     id: intent
     attributes:
       label: Accepted intent
       description: Link the merged intent.md or its Intent issue.
-      placeholder: "#12 or docs/sdlc/12-oauth-resource-server/intent.md"
+      placeholder: "#12 or docs/sdlc/5-oauth-resource-server/intent.md"
     validations:
       required: true
 

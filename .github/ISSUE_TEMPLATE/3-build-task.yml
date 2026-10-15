@@ -30,7 +30,6 @@ body:
     attributes:
       label: Component
       options:
-        - Core package
         - Template repo
         - CI/CD
         - Docs

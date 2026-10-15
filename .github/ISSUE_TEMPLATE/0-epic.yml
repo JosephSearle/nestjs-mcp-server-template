@@ -1,0 +1,56 @@
+name: Epic
+description: Track one outcome through Intent, Spec and Build. Stage 0 of the SDLC.
+title: "[Epic]: "
+labels: ["epic"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        An epic doesn't describe work itself — it groups the Intent, Spec and Build-task issues
+        that do. File each of those as a sub-issue of this one (GitHub's "Add sub-issue"), and
+        their documents live together under `docs/sdlc/<this-issue-number>-<slug>/`.
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: The problem or opportunity this epic exists to address.
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: What exists once this epic is done. One possible shape, confirmed by the Intent.
+    validations:
+      required: true
+
+  - type: textarea
+    id: stages
+    attributes:
+      label: Stages
+      description: Update as sub-issues are filed and merged.
+      placeholder: |
+        - [ ] Intent: #
+        - [ ] Spec: #
+        - [ ] Build: task issues, added as sub-issues once the spec is accepted
+    validations:
+      required: true
+
+  - type: input
+    id: documents
+    attributes:
+      label: Documents
+      description: The folder this epic's sub-issue documents will live in.
+      placeholder: "docs/sdlc/<this-issue-number>-<slug>/: intent.md, spec.md, and later plan.md"
+    validations:
+      required: true
+
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Conditions that close this epic, beyond "all sub-issues closed".
+    validations:
+      required: true
