@@ -223,7 +223,7 @@ The HTTP server in development starts without `AUTH_ISSUER` only if `AUTH_MODE=d
 
 **Logging.** `nestjs-pino`. JSON to stdout (stderr under stdio). Every line carries `trace_id` and `span_id`. Redaction paths: `req.headers.authorization`, `req.headers.cookie`, `res.headers["set-cookie"]`, any `*token*`, `*secret*` and `requestState` key. Tool arguments and results are not logged by default.
 
-**Tracing.** `@opentelemetry/sdk-node`, loaded with `node --import ./dist/platform/telemetry/instrumentation.js` so it starts before Nest. Instrumentations limited to `http`, `express` and `ioredis` (if present). OTLP over HTTP/protobuf, configured by `OTEL_EXPORTER_OTLP_ENDPOINT`; no exporter runs when it's unset. A Nest interceptor wraps every MCP call in a span named `<mcp.method.name> <tool or resource name>`, following the OpenTelemetry MCP semantic conventions (development status), with the `_meta` trace context as parent when present.
+**Tracing.** `@opentelemetry/sdk-node`, loaded with `node --import ./dist/platform/telemetry/instrumentation.js` so it starts before Nest. Instrumentations limited to `http`, `express` and `ioredis` (if present). OTLP, configured only by the standard variables: `OTEL_EXPORTER_OTLP_ENDPOINT`, and `OTEL_EXPORTER_OTLP_PROTOCOL` (`http/protobuf` by default, `grpc` supported), so the server works with any collector. No exporter runs when the endpoint is unset. The server never uses a vendor-specific exporter or distro. A Nest interceptor wraps every MCP call in a span named `<mcp.method.name> <tool or resource name>`, following the OpenTelemetry MCP semantic conventions (development status), with the `_meta` trace context as parent when present.
 
 **Metrics.** Request count and duration by method and tool, error count by JSON-RPC code, auth failures by reason (`missing`, `invalid_signature`, `wrong_audience`, `expired`, `insufficient_scope`).
 
@@ -283,6 +283,7 @@ The HTTP server in development starts without `AUTH_ISSUER` only if `AUTH_MODE=d
 ```
 infra/terraform/
   modules/container-app/       # Container App, identity, probes, ingress, secrets
+  modules/otel-collector/      # Collector container app and config.yaml
   envs/reference/
     main.tf  variables.tf  outputs.tf  versions.tf
     backend.tf                 # azurerm backend, partial config
@@ -291,12 +292,17 @@ infra/terraform/
 ```
 
 - `azurerm` provider pinned with the lock file. State in an Azure Storage backend configured at `init`; no state in the repo.
-- Resources: Log Analytics workspace (retention variable, default 30 days), a virtual network with an infrastructure subnet for the environment, a VNet-integrated Container Apps environment, user-assigned managed identity, Azure Container Registry (AcrPull for the identity), Key Vault with RBAC holding `MCP_REQUEST_STATE_SECRET` and `LOG_PSEUDONYM_KEY`, referenced as Container App secrets, and the Container App.
+- Resources: Log Analytics workspace (retention variable, default 30 days), a virtual network with an infrastructure subnet for the environment, a VNet-integrated Container Apps environment, user-assigned managed identity, Azure Container Registry (AcrPull for the identity), Key Vault with RBAC holding `MCP_REQUEST_STATE_SECRET` and `LOG_PSEUDONYM_KEY`, referenced as Container App secrets, an Application Insights resource (workspace-based), the OpenTelemetry Collector container app, and the server's Container App.
 - Container App: HTTPS only, liveness and readiness probes on `/healthz` and `/readyz`, `min_replicas` 1, `max_replicas` a variable (default 3) as a cost ceiling, HTTP scale rule.
 - Ingress is internal by default (concern 6): only apps in the same Container Apps environment or resources in its virtual network can reach the server. The gateway runs either as another container app in the environment or inside the VNet (for example Azure API Management with VNet integration).
 - `external_ingress` (default `false`) makes the server public for demos only. When `true`, Terraform outputs a warning that this is not a production setup, and the README repeats it.
 - Gateways hosted outside Azure: the README documents restricting external ingress to the gateway's egress IPs with Container Apps IP restrictions. Not built into the module.
-- Telemetry goes to `OTEL_EXPORTER_OTLP_ENDPOINT`. The reference wires the Container Apps managed OpenTelemetry agent to Application Insights (see open questions).
+- **Telemetry** (check 5). An OpenTelemetry Collector (contrib distribution, image pinned by digest) runs as its own container app in the same environment, with internal ingress only. It receives OTLP from the server and sends traces, metrics and logs to Application Insights through its `azuremonitor` exporter. The server's `OTEL_EXPORTER_OTLP_ENDPOINT` points at the collector's internal address.
+  - Not the Container Apps managed OpenTelemetry agent: its Application Insights destination takes no metrics, it speaks gRPC only, it runs as one fixed replica, and it drops data after about five minutes of backlog.
+  - Collector config lives in `infra/terraform/modules/otel-collector/config.yaml`: `memory_limiter` and `batch` processors, a bounded retry queue, and an attribute filter that drops `client.address`, `enduser.id` and HTTP header attributes as a second line of defence behind section 7's redaction.
+  - The Application Insights connection string reaches the collector as a Key Vault-referenced secret. `min_replicas` 1; scales on CPU.
+  - Swapping backends means editing the collector config only; the server is unchanged.
+  - Dependabot doesn't track an image digest inside a Terraform string, so the collector digest is a variable that each template release reviews and bumps (release checklist in `docs/upgrading.md`).
 - Redis is not provisioned. `docs/state.md` points to Azure Managed Redis.
 - No gateway is provisioned. On its own, the reference deployment is not production-ready; its README says a gateway must front it in production (section 4).
 
@@ -395,7 +401,7 @@ Recorded in `docs/adr/` (MADR format): 0001–0006 are the decisions listed on i
 | 0002 | One generic token guard plus `AUTH_PROVIDER` claim presets and claim-path overrides, not one module per provider (section 3) |
 | 0003 | Validate every token in the server, even behind a gateway (section 3) |
 | 0004 | Zod env schema via `@nestjs/config`; transport by entry point; auth by `AUTH_MODE` (sections 2, 6) |
-| 0005 | `nestjs-pino`, OTel Node SDK with OTLP, HMAC pseudonyms (section 7) |
+| 0005 | `nestjs-pino`, OTel Node SDK with vendor-neutral OTLP (protocol by env var), HMAC pseudonyms; reference deployment routes through a self-run OpenTelemetry Collector rather than the managed agent (sections 7, 10) |
 | 0006 | One reusable module plus a reference environment; internal ingress in a VNet-integrated environment by default (section 10) |
 | 0007 | `AGENTS.md` as the source with `CLAUDE.md` importing it; `template-` prefixed skills and path-scoped rules; `.mcp.json` limited to the local build (section 12) |
 
@@ -418,7 +424,7 @@ Carried forward, to verify at the start of Build:
 2. ~~**Inspector CLI headers.**~~ Checked 2026-10-15: the CLI takes `--header 'Authorization: Bearer <token>'` and exits `3` when a server needs auth, which gives the negative tests a clean assertion. No fallback client needed. Section 9 updated.
 3. ~~**Entra ID client registration.**~~ Checked 2026-10-14: Entra supports neither DCR nor CIMD, with no announced plans. Resolved under concern 5. Recheck Auth0 and Keycloak support when writing the provider matrix.
 4. ~~**Agent file formats.**~~ Checked 2026-10-15: rules use `paths:` YAML frontmatter with globs; `@AGENTS.md` imports are supported and are the only form that works in every session; Copilot's coding agent reads `AGENTS.md`. One fix: the hook must exit `2` for Claude to see a failure, so it runs a small Node script rather than `npm` directly. Section 12 updated.
-5. **Container Apps managed OpenTelemetry agent.** Confirm it's generally available and accepts OTLP traces and metrics for Application Insights. Fallback: an OpenTelemetry Collector sidecar.
+5. ~~**Container Apps managed OpenTelemetry agent.**~~ Checked 2026-10-15: GA, but its Application Insights destination accepts traces and logs only, not metrics; gRPC only; single fixed replica; Terraform support documented only through AzAPI. **Decided (Joseph Searle): run an OpenTelemetry Collector as its own container app** exporting all signals to Application Insights, and have the server honour `OTEL_EXPORTER_OTLP_PROTOCOL` rather than hard-coding HTTP. Sections 7 and 10 updated.
 6. **Biome rule coverage.** Confirm Biome's type-aware rules cover floating and misused promises in async handlers, which typescript-eslint would have caught. If not, record the gap and rely on tests and `tsc` strict mode.
 
 ## Areas of concern
