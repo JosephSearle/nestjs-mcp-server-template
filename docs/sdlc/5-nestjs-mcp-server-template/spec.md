@@ -291,6 +291,11 @@ The HTTP server in development starts without `AUTH_ISSUER` only if `AUTH_MODE=d
 
 **Container.** Multi-stage `Dockerfile`, `node:22-alpine` pinned by digest, `npm ci --omit=dev`, non-root user, `CMD` runs the HTTP entry only.
 
+- The base uses the full tag (for example `node:22.23.3-alpine3.24@sha256:…`) rather than `22-alpine`, so the Node version is readable and Dependabot bumps tag and digest together. Every stage builds on that one pinned base (changed in #16).
+- The runtime stage removes npm, npx, corepack and yarn, which the app never calls. Its files stay owned by root, and it runs as UID 1000 (`node`), so runtimes can verify it isn't root.
+- `.dockerignore` is an allowlist, so `.env` can't enter the build context.
+- The CI `image` job checks the user, the `CMD` and that dev-only packages are absent. It then starts the container with production config and asserts a 401 from `/mcp` without a token.
+
 ### 10. Terraform (ADR-0006)
 
 ```

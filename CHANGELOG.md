@@ -53,6 +53,9 @@ Changes to coding-agent files (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`
 - `src/app/scopes.ts` with `BASE_SCOPE` (`mcp:access`), passed to `PlatformModule.forRoot({ scopes })` from `app.module.ts`.
 - Token guard tests in `test/platform/auth/` for every rejection, and a check that only the guard reads the `Authorization` header.
 - ADR-0003 (validate every token in the server).
+- Multi-stage `Dockerfile` on `node:22.23.3-alpine3.24`, pinned by digest. It installs production dependencies only (`npm ci --omit=dev`), drops npm, npx, corepack and yarn, runs as the non-root `node` user (UID 1000), and runs only the HTTP entry, `dist/main.js`, with the instrumentation import.
+- `.dockerignore` as an allowlist, so `.env`, `dist` and `node_modules` never enter the build context.
+- CI builds the image on every pull request (no push). It checks the image runs as non-root, has only the HTTP entry as `CMD` and contains no dev-only packages. It then starts the container with production config and expects the metadata endpoint to answer and `/mcp` without a token to return 401.
 
 ### Changed
 
