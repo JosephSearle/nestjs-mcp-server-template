@@ -1,17 +1,23 @@
 // Loaded with `node --import ./dist/platform/telemetry/instrumentation.js`, so the SDK patches
 // http and express before Nest imports them (spec §7, ADR-0005).
-import { register } from "node:module";
-import { pathToFileURL } from "node:url";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { NoopSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { register } from "import-in-the-middle/register-hooks.mjs";
 import { processTelemetrySettings } from "../config/telemetry-env";
 import { exitOnProblems } from "../config/validate-config";
-import { otlpExporters, telemetryInstrumentations } from "./sdk-parts";
+import {
+	INSTRUMENTED_MODULES,
+	otlpExporters,
+	telemetryInstrumentations,
+} from "./sdk-parts";
 
 // Nest 12 is ESM, so express and http arrive through `import`. This hook lets the
-// instrumentations patch them; `require` is already covered.
-register("@opentelemetry/instrumentation/hook.mjs", pathToFileURL(__filename));
+// instrumentations patch them; `require` is already covered. It runs synchronously in this
+// thread (`module.registerHooks`, Node 22.22.3+): the off-thread `module.register` hook races
+// with this CommonJS build loading Nest's ESM and crashed on Linux. Only modules we instrument
+// are wrapped.
+register({ include: [...INSTRUMENTED_MODULES] });
 
 const result = processTelemetrySettings();
 if (!result.ok) {

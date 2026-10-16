@@ -41,7 +41,62 @@ jobs:
 
       - run: npm run build
 
-      # Later steps (smoke tests, Docker build, Terraform validate) go here.
+      # Later steps (smoke tests, Terraform validate) go here.
 
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+
+  image:
+    name: container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Build only. Pushing is deploy.yml's job.
+      - name: Build image
+        run: docker build --tag mcp-server:ci .
+
+      - name: Check the image runs as a non-root user
+        run: test "$(docker run --rm --entrypoint id mcp-server:ci -u)" != 0
+
+      - name: Check the image runs only the HTTP entry
+        run: |
+          cmd="$(docker image inspect --format '{{json .Config.Cmd}}' mcp-server:ci)"
+          echo "CMD: $cmd"
+          test "$cmd" = '["node","--import","./dist/platform/telemetry/instrumentation.js","dist/main.js"]'
+
+      - name: Check dev-only packages are absent
+        run: |
+          docker run --rm --entrypoint sh mcp-server:ci -c '
+            for pkg in @rekog/mcp-nest-auth cookie-parser @nestjs/cli typescript jest; do
+              if [ -e "node_modules/$pkg" ]; then echo "$pkg is in the image"; exit 1; fi
+            done'
+
+      # Starts the real CMD with production config. Keys load only when a token arrives, so the
+      # issuer is never contacted.
+      - name: Start the container and call it
+        run: |
+          docker run --detach --name mcp-server --publish 3000:3000 \
+            --env MCP_PUBLIC_URL=http://localhost:3000 \
+            --env MCP_REQUEST_STATE_SECRET="$(openssl rand -hex 32)" \
+            --env LOG_PSEUDONYM_KEY="$(openssl rand -hex 32)" \
+            --env AUTH_ISSUER=https://issuer.invalid/ \
+            --env AUTH_JWKS_URI=https://issuer.invalid/jwks \
+            mcp-server:ci
+          for _ in $(seq 1 30); do
+            curl --silent --fail http://localhost:3000/.well-known/oauth-protected-resource/mcp && break
+            sleep 1
+          done
+          echo
+          curl --silent --fail http://localhost:3000/.well-known/oauth-protected-resource/mcp > /dev/null
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            --request POST http://localhost:3000/mcp \
+            --header 'Content-Type: application/json' --data '{}')"
+          echo "/mcp without a token: $status"
+          test "$status" = 401
+
+      - name: Container logs
+        if: always()
+        run: docker logs mcp-server || true

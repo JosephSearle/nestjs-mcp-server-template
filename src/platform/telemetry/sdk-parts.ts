@@ -19,6 +19,14 @@ import { ScrubbingSpanProcessor } from "./scrubbing-span-processor";
 /** Health checks are probed every few seconds and are excluded from traces (spec §8). */
 export const UNTRACED_PATHS = new Set(["/healthz", "/readyz"]);
 
+/** The modules the instrumentations below patch. The ESM hook wraps these and nothing else. */
+export const INSTRUMENTED_MODULES = [
+	"http",
+	"https",
+	"express",
+	"ioredis",
+] as const;
+
 /** Only http, express and ioredis (spec §7). ioredis is patched only if the app loads it. */
 export function telemetryInstrumentations(): Instrumentation[] {
 	return [
