@@ -81,7 +81,7 @@ Chosen: **`nestjs-pino`, the Node SDK over vendor-neutral OTLP, an HMAC pseudony
   - It records `mcp.server.errors` from the response actually sent: the JSON-RPC `error.code`, an `isError` tool result, or an HTTP status of 400 or above.
   - It reads the outcome from the response body (up to 256 KiB). Errors raised before dispatch, such as an unknown tool, are sent with HTTP 200, so the status alone would miss them.
 - Under stdio there is no HTTP layer, so `McpTelemetryInterceptor` records the metrics itself.
-- `mcp.server.auth.failures` counts failures by reason. The token guard (#15) calls `recordAuthFailure`.
+- `mcp.server.auth.failures` counts failures by `reason`: `missing`, `malformed`, `invalid_signature`, `wrong_issuer`, `wrong_audience`, `expired`, `not_yet_valid`, `lifetime_exceeded` and `insufficient_scope`. The token guard calls `recordAuthFailure`, and `McpHttpInterceptor` counts the per-tool `insufficient_scope` 403s that mcp-nest writes itself (ADR-0003).
 
 ### Identity
 

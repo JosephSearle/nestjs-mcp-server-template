@@ -4,6 +4,7 @@ import {
 	type McpTransport,
 	type StreamableHttpTransportOptions,
 } from "@rekog/mcp-nest";
+import { resourceMetadataUrl } from "../auth/www-authenticate";
 import type { AppConfig } from "../config/config.schema";
 
 /** The one MCP revision both transports serve (FR-4). */
@@ -11,7 +12,7 @@ export const MCP_PROTOCOL_VERSION = "2026-07-28";
 
 type HttpTransportConfig = Pick<
 	AppConfig,
-	"MCP_ALLOWED_ORIGINS" | "MCP_ALLOWED_HOSTS"
+	"MCP_ALLOWED_ORIGINS" | "MCP_ALLOWED_HOSTS" | "MCP_PUBLIC_URL"
 >;
 
 type StrategyConfig = Pick<
@@ -30,6 +31,8 @@ const PRIVATE = { cacheScope: "private" } as const;
 /**
  * Streamable HTTP options. Stateless by default: `statefulMode` is legacy-era only and is never set
  * (spec §5). `mount: false` because `McpHttpController` owns the route, so guards apply.
+ * `stepUpAuthorization` answers a `@ToolScopes` shortfall with 403 and an `insufficient_scope`
+ * challenge naming the scopes, so clients can step up (spec §3).
  */
 export function httpTransportOptions(
 	config: HttpTransportConfig,
@@ -38,6 +41,9 @@ export function httpTransportOptions(
 		protocol: "modern-only",
 		responseMode: "auto",
 		mount: false,
+		stepUpAuthorization: {
+			resourceMetadataUrl: resourceMetadataUrl(config.MCP_PUBLIC_URL),
+		},
 		security: {
 			...(config.MCP_ALLOWED_ORIGINS && {
 				allowedOrigins: config.MCP_ALLOWED_ORIGINS,

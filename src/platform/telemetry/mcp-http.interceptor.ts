@@ -7,12 +7,21 @@ import {
 } from "@nestjs/common";
 import { type Attributes, trace } from "@opentelemetry/api";
 import type { Observable } from "rxjs";
-import { recordError, recordOperation } from "./mcp-metrics";
+import { recordAuthFailure, recordError, recordOperation } from "./mcp-metrics";
 import { captureBody, responseOutcome } from "./response-outcome";
 
 const header = (req: IncomingMessage, name: string) => {
 	const value = req.headers[name];
 	return typeof value === "string" && value !== "" ? value : undefined;
+};
+
+const isScopeDenial = (res: ServerResponse) => {
+	const challenge = res.getHeader("www-authenticate");
+	return (
+		res.statusCode === 403 &&
+		typeof challenge === "string" &&
+		challenge.includes('error="insufficient_scope"')
+	);
 };
 
 /** `error.type` and code attributes for a finished response, or none if it succeeded. */
@@ -81,6 +90,10 @@ export class McpHttpInterceptor implements NestInterceptor {
 			recordOperation(seconds, { ...attributes, ...error });
 			if ("error.type" in error) {
 				recordError({ ...attributes, ...error });
+			}
+			// The transport writes per-tool scope denials itself (step-up), after the guard has passed.
+			if (isScopeDenial(res)) {
+				recordAuthFailure("insufficient_scope");
 			}
 		});
 		return next.handle();

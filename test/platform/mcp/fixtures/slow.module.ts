@@ -14,5 +14,8 @@ class SlowTools {
 	}
 }
 
-@Module({ imports: [PlatformModule], controllers: [SlowTools] })
+@Module({
+	imports: [PlatformModule.forRoot({ scopes: [] })],
+	controllers: [SlowTools],
+})
 export class SlowModule {}

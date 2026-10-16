@@ -21,7 +21,7 @@ class FailingTools {
 }
 
 @Module({
-	imports: [PlatformModule],
+	imports: [PlatformModule.forRoot({ scopes: [] })],
 	controllers: [ExampleTools, ExampleResources, ExamplePrompts, FailingTools],
 })
 export class FailingModule {}

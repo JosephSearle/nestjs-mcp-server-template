@@ -2,12 +2,16 @@ import { type Attributes, metrics } from "@opentelemetry/api";
 
 const meter = () => metrics.getMeter("mcp-server");
 
-/** Why a request to /mcp failed authentication (spec §7). */
+/** Why a request to /mcp failed authentication (spec §3, §7). */
 export type AuthFailureReason =
 	| "missing"
+	| "malformed"
 	| "invalid_signature"
+	| "wrong_issuer"
 	| "wrong_audience"
 	| "expired"
+	| "not_yet_valid"
+	| "lifetime_exceeded"
 	| "insufficient_scope";
 
 /**
@@ -32,7 +36,7 @@ export function recordError(attributes: Attributes): void {
 		.add(1, attributes);
 }
 
-/** Auth failure count by reason. Called by the token guard (#15). */
+/** Auth failure count by reason. Called by the token guard and for per-tool scope denials. */
 export function recordAuthFailure(reason: AuthFailureReason): void {
 	meter()
 		.createCounter("mcp.server.auth.failures", {

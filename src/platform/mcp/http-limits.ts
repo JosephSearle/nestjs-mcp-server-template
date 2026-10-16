@@ -1,19 +1,12 @@
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { NextFunction, Request, Response } from "express";
 import type { AppConfig } from "../config/config.schema";
+import { jsonRpcError } from "./json-rpc-error";
 
 type HttpLimitsConfig = Pick<
 	AppConfig,
 	"MCP_MAX_REQUEST_BYTES" | "MCP_REQUEST_TIMEOUT_MS"
 >;
-
-// The same shape the transport uses for its own HTTP-level rejections: a JSON-RPC error with no id.
-// An empty or non-JSON body makes a conforming client conclude the server is legacy.
-const jsonRpcError = (message: string) => ({
-	jsonrpc: "2.0",
-	error: { code: -32000, message },
-	id: null,
-});
 
 /**
  * Body limit and request timeout for the HTTP entry. mcp-nest sets neither, so the template does.

@@ -1,12 +1,14 @@
 import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { MCP_HTTP_HANDLER, StreamableHttpTransport } from "@rekog/mcp-nest";
+import { AuthModule } from "../auth/auth.module";
 import type { AppConfig } from "../config/config.schema";
 import { httpTransportOptions } from "./mcp.options";
 import { MCP_HTTP_TRANSPORT } from "./mcp.tokens";
 import { McpHttpController } from "./mcp-http.controller";
 
 @Module({
+	imports: [AuthModule],
 	controllers: [McpHttpController],
 	providers: [
 		{
@@ -21,6 +23,7 @@ import { McpHttpController } from "./mcp-http.controller";
 						MCP_ALLOWED_HOSTS: config.get("MCP_ALLOWED_HOSTS", {
 							infer: true,
 						}),
+						MCP_PUBLIC_URL: config.get("MCP_PUBLIC_URL", { infer: true }),
 					}),
 				),
 		},

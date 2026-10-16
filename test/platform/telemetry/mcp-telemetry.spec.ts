@@ -5,6 +5,7 @@ import { SpanKind } from "@opentelemetry/api";
 import { createHttpApp } from "../../../src/platform/mcp/start-mcp";
 import { connectHttp } from "../../support/mcp-client";
 import { installTestTelemetry } from "../../support/telemetry";
+import { authStub } from "../mcp/fixtures/http-env";
 import { FailingModule } from "./fixtures/failing.module";
 
 const telemetry = installTestTelemetry();
@@ -17,7 +18,10 @@ let client: Client;
 beforeAll(async () => {
 	app = await createHttpApp(FailingModule, { logger: false });
 	await app.listen(0, "127.0.0.1");
-	client = await connectHttp(`${await app.getUrl()}/mcp`);
+	client = await connectHttp(
+		`${await app.getUrl()}/mcp`,
+		await authStub.sign(),
+	);
 });
 
 afterAll(async () => {
