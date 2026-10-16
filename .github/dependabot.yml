@@ -17,7 +17,6 @@ updates:
       actions-minor-patch:
         update-types: [minor, patch]
 
-  # The Dockerfile arrives with #16; until then Dependabot reports no files found here.
   - package-ecosystem: docker
     directory: /
     schedule:
