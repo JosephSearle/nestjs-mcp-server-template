@@ -95,7 +95,9 @@ export function startAuthStub(): AuthStub {
 			fetches += 1;
 			return json(jwks);
 		}
-		if (url.startsWith(ISSUER)) {
+		const parsed = new URL(url);
+		const issuerUrl = new URL(ISSUER);
+		if (parsed.origin === issuerUrl.origin) {
 			return json({}, 404);
 		}
 		return realFetch(input, init);
