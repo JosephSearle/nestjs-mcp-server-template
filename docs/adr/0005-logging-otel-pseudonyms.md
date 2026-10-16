@@ -63,7 +63,7 @@ Chosen: **`nestjs-pino`, the Node SDK over vendor-neutral OTLP, an HMAC pseudony
 
 `node --import ./dist/platform/telemetry/instrumentation.js` starts the SDK before Nest, so the instrumentations patch `http` and `express` before Nest imports them.
 
-- **ESM hook.** Nest 12 is ESM, so the bootstrap registers the `import-in-the-middle` hook.
+- **ESM hook.** Nest 12 is ESM, so the bootstrap registers the `import-in-the-middle` hook. It uses the synchronous `module.registerHooks` loader (`import-in-the-middle/register-hooks.mjs`, Node 22.22.3 or later) and wraps only `http`, `https`, `express` and `ioredis`. The off-thread `module.register` loader raced with the CommonJS build loading Nest's ESM, and the container crashed at startup on Linux (changed in #16).
 - **Instrumentations.** Only `http`, `express` and `ioredis`. Health paths are not traced.
 - **Exporters.** `OTEL_EXPORTER_OTLP_ENDPOINT` decides whether anything is exported. `OTEL_EXPORTER_OTLP_PROTOCOL` chooses `http/protobuf` (default) or `grpc`; any other value stops the process with a config problem. The exporters read their other settings from the standard variables.
 - **No endpoint.** Every SDK option is still given explicitly, because the SDK otherwise falls back to an OTLP exporter on localhost for traces, metrics and logs. A no-op span processor keeps the tracer provider running, so log lines still get trace IDs.

@@ -63,6 +63,7 @@ Changes to coding-agent files (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`
 
 ### Fixed
 
+- `npm start` and the container no longer crash at startup on Node 22 on Linux with `ERR_INTERNAL_ASSERTION` from `import-in-the-middle`. The OpenTelemetry ESM hook now runs synchronously through `module.registerHooks` and wraps only the instrumented modules. `import-in-the-middle` is now a direct, exact-pinned dependency.
 - README is UTF-8 with a single heading.
 - `.gitattributes` keeps line endings LF on every checkout, so `npm run lint` passes on Windows.
 
