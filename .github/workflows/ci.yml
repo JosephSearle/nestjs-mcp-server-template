@@ -5,21 +5,33 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Install, then the lint (biome check), typecheck, test and build scripts. Node comes from the
+  # matrix; the npm cache and frozen install come from the lockfile.
   check:
     name: check (Node ${{ matrix.node-version }})
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         node-version: ["22.22.3", "24.x"]
+    uses: JosephSearle/workflow-catalog/.github/workflows/node-ci.yml@52dc33b701540a49cfc36f03ac93a779631441af # v1.0.0
+    permissions:
+      contents: read
+    with:
+      node-version: ${{ matrix.node-version }}
+
+  audit:
+    name: audit production dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -27,28 +39,16 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: ${{ matrix.node-version }}
-          cache: npm
+          node-version-file: .nvmrc
 
-      - run: npm ci
-
-      - name: Lint and format check
-        run: npx biome ci .
-
-      - run: npm run typecheck
-
-      - run: npm test
-
-      - run: npm run build
-
-      # Later steps (smoke tests, Terraform validate) go here.
-
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+      # Reads package-lock.json, so no install is needed.
+      - run: npm audit --omit=dev --audit-level=high
 
   image:
     name: container image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
