@@ -20,7 +20,8 @@ Changes to coding-agent files (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`
 - Biome `noProcessEnv` at `error` in `src/`, except `src/platform/config/`.
 - Biome test rules at `error` in `test/`: no focused or skipped tests, no `done` callbacks, no deeply nested `describe` blocks.
 - ADR-0004 (config schema, transport by entry point, auth by `AUTH_MODE`).
-- CI workflow on pull requests and `main`, on Node 22.22.3 and 24: `biome ci`, typecheck, test, build and `npm audit --omit=dev --audit-level=high`. Read-only token, no secrets.
+- CI workflow on pull requests and `main`, on Node 22.22.3 and 24: the `lint` (`biome check`), `typecheck`, `test` and `build` scripts through `JosephSearle/workflow-catalog`'s `node-ci` v1.0.0, plus `npm audit --omit=dev --audit-level=high`. Read-only token, no secrets.
+- Dependabot groups `workflow-catalog` releases into one PR, majors included.
 - CodeQL scanning for `javascript-typescript` and `actions` on pull requests, `main` and weekly.
 - Dependabot for `npm`, `github-actions`, `docker` and `terraform`, weekly, with minor and patch updates grouped.
 - Every third-party action pinned to a commit SHA.
