@@ -67,6 +67,7 @@ Changes to coding-agent files (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.mcp.json`
 - `npm start` and the container no longer crash at startup on Node 22 on Linux with `ERR_INTERNAL_ASSERTION` from `import-in-the-middle`. The OpenTelemetry ESM hook now runs synchronously through `module.registerHooks` and wraps only the instrumented modules. `import-in-the-middle` is now a direct, exact-pinned dependency.
 - README is UTF-8 with a single heading.
 - `.gitattributes` keeps line endings LF on every checkout, so `npm run lint` passes on Windows.
+- `npm audit --omit=dev --audit-level=high` passes again. `body-parser` is updated to 2.4.0 ([GHSA-27r3-jxmh-p828](https://github.com/advisories/GHSA-27r3-jxmh-p828)), and an npm `overrides` entry pins `multer` to 2.5.0 ([GHSA-q7qp-rjg7-q26m](https://github.com/advisories/GHSA-q7qp-rjg7-q26m)), because `@nestjs/platform-express` 12.2.0 still pins 2.4.0. Remove the override once Nest ships a fixed `multer`.
 
 ### Agent files
 
