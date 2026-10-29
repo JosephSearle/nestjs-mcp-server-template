@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         node-version: ["22.22.3", "24.x"]
-    uses: JosephSearle/workflow-catalog/.github/workflows/node-ci.yml@52dc33b701540a49cfc36f03ac93a779631441af # v1.0.0
+    uses: JosephSearle/workflow-catalog/.github/workflows/node-ci.yml@9ecc7aead2bb9b43bc19cb884053f021ab8dbd3f # v1.3.0
     permissions:
       contents: read
     with:
