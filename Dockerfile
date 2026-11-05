@@ -1,7 +1,7 @@
 # Production image for the HTTP entry only (spec §9, FR-3). stdio is never the entry point.
 
 # One pinned base for every stage. Dependabot bumps the tag and digest together.
-FROM node:22.23.3-alpine3.24@sha256:2c752226d477b4a886378baa95b9af252be59301b725fdb0b7e15208131505a8 AS base
+FROM node:26.13.0-alpine3.24@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS base
 WORKDIR /app
 
 # Compile with the full dependency tree.
